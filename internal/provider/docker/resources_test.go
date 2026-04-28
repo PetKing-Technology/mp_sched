@@ -32,3 +32,24 @@ func TestGpuDeviceRequests_All(t *testing.T) {
 		t.Fatalf("%+v", req[0])
 	}
 }
+
+func TestParseMemoryBytes_KubernetesGi(t *testing.T) {
+	got, err := parseMemoryBytes("16Gi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := parseMemoryBytes("16GiB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want || got != 16*1024*1024*1024 {
+		t.Fatalf("got %d want %d", got, 16*1024*1024*1024)
+	}
+}
+
+func TestParseMemoryBytes_PreservesGiB(t *testing.T) {
+	got, err := parseMemoryBytes("16GiB")
+	if err != nil || got != 16*1024*1024*1024 {
+		t.Fatalf("got %d err %v", got, err)
+	}
+}
