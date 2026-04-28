@@ -45,7 +45,7 @@ from typing import Any
 #   python /app/uni_dock_screen.py --receptor /data/receptor.pdb ...
 #
 # 请将 TAB_DATASET_HOST_PATH 在 worker 配置里 [[docker.mounts]] 绑到 /data。
-TAB_DATASET_HOST_PATH = "/mnt/disk_1_4t/zcc/ChemToolAgent-main/02_docking_agent/test_templ/agents/docking/core/UniDock_block/tab_dataset"
+TAB_DATASET_HOST_PATH = "/mnt/disk_1_4t/mpai_data/agent_workspace"
 
 UNI_DOCK_SUBMIT_BODY: dict[str, Any] = {
     "operation": "start",
@@ -60,9 +60,9 @@ UNI_DOCK_SUBMIT_BODY: dict[str, Any] = {
             "python",
             "/app/uni_dock_screen.py",
             "--receptor",
-            "/data/receptor.pdb",
+            "/mnt/disk_1_4t/mpai_data/agent_workspace/tab_dataset/receptor.pdb",
             "--ligands",
-            "/data/ref_lig.sdf",
+            "/mnt/disk_1_4t/mpai_data/agent_workspace/tab_dataset/ref_lig.sdf",
             "--box_center",
             "110",
             "60",
@@ -72,7 +72,7 @@ UNI_DOCK_SUBMIT_BODY: dict[str, Any] = {
             "20",
             "20",
             "--dir",
-            "./uni_results2",
+            "/mnt/disk_1_4t/mpai_data/agent_workspace/tab_dataset/uni_results2",
         ],
         # 若镜像默认工作目录不合适，可解开：
         # "workdir": "/app",
@@ -168,8 +168,8 @@ def main() -> None:
     s_submit = sub.add_parser("submit", help="POST 提交 UniDock 示例任务")
     s_submit.add_argument(
         "--controller",
-        default="http://127.0.0.1:8080",
-        help="Controller HTTP 根（含端口），默认本机 8080",
+        default="http://127.0.0.1:8098",
+        help="Controller HTTP 根（含端口），默认本机 8098",
     )
     s_submit.add_argument(
         "--print-body-only",
@@ -178,7 +178,7 @@ def main() -> None:
     )
 
     s_poll = sub.add_parser("poll", help="GET 轮询任务状态")
-    s_poll.add_argument("--controller", default="http://127.0.0.1:8080")
+    s_poll.add_argument("--controller", default="http://127.0.0.1:8098")
     s_poll.add_argument("task_id")
     s_poll.add_argument("--interval", type=float, default=3.0)
     s_poll.add_argument("--max", type=int, default=0, help="最多轮询次数，0=只查一次")

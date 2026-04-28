@@ -15,16 +15,16 @@ scheduler:
 controller:
   http:
     enable: true
-    addr: ":8080"
+    addr: ":8098"
 
 callback:
-  enable: false
-  url: "http://127.0.0.1:9/hook"
+  enable: true
+  url: "http://127.0.0.1:8787/callback"
   method: "POST"
   timeout_seconds: 10
 
 worker:
-  poll_ms: 200
+  poll_ms: 15000 
   admitted_timeout_seconds: 0
   allowed_providers: []
   default_max_runtime_seconds: 3600
@@ -39,13 +39,15 @@ reconciler:
 
 # 与 docker-compose 中 ClickHouse 一致；不启用写库时 enable=false 即可
 clickhouse:
-  enable: false
+  enable: true
   address: "127.0.0.1:9000"
   database: "default"
   user: "mp_sched"
   password: "mp_sched_dev"
   tls: false
 
+telemetry:
+  slog_to_clickhouse: true
 # 与 mp-worker -config 对齐；e2e 默认 Load 本文件（见 E2E_CONFIG）
 docker:
   # data_dir 空则 ApplyDefaults 落到系统临时目录下 mp_sched-docker
@@ -55,12 +57,12 @@ docker:
   # mounts 非空时每个任务都会 bind；路径须在本机存在，否则 Run 失败
   mounts:
     - name: "shared"
-      host_path: "/data/host"
-      mount_path: "/data"
+      host_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
+      mount_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
   oss:
     enable: false
   # 可选本机资源上限，与 task.res_* 校验；取消注释时与上方 docker 同一块，勿重复 docker: 根键
-  # host_resources:
-  #   max_cpu: "32"
-  #   max_memory: "256Gi"
-  #   gpu_ids: ["GPU-0", "GPU-1"]
+  host_resources:
+    max_cpu: "64"
+    max_memory: "256GiB"
+    gpu_ids: ["1", "2"]
