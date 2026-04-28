@@ -1,3 +1,4 @@
+# 未传 -config 时 mp-controller / mp-worker 的默认文件（与 development.yaml 结构一致；本地开发常用 make run-* 指向 development.yaml）
 server:
   addr: ":8080"
   log_level: info

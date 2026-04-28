@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "configs/config.example.yaml", "config path")
+	configPath := flag.String("config", "configs/default.yaml", "config path (YAML)")
 	flag.Parse()
 	cfg, err := config.Load(*configPath)
 	if err != nil {
