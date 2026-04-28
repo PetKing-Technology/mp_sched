@@ -3,32 +3,30 @@ package docker
 import (
 	"testing"
 
+	"mp_sched/internal/config"
+
 	"github.com/docker/docker/api/types/container"
 )
 
-func TestGpuDeviceRequests_PreservesDuplicateIDs(t *testing.T) {
-	req := gpuDeviceRequests("GPU-0, GPU-0 ,GPU-1")
-	if len(req) != 1 {
-		t.Fatalf("len: %d", len(req))
+func TestGpuDeviceRequestsForTask_Off(t *testing.T) {
+	hr := &config.DockerHostResources{GPUIDs: []string{"GPU-0"}}
+	if req := gpuDeviceRequestsForTask("false", hr); req != nil {
+		t.Fatalf("%#v", req)
+	}
+}
+
+func TestGpuDeviceRequestsForTask_On(t *testing.T) {
+	hr := &config.DockerHostResources{GPUIDs: []string{"GPU-0", "GPU-1"}}
+	req := gpuDeviceRequestsForTask("true", hr)
+	if len(req) != 1 || len(req[0].DeviceIDs) != 2 {
+		t.Fatalf("%+v", req)
 	}
 	want := container.DeviceRequest{
 		Driver:       "nvidia",
 		Capabilities: [][]string{{"gpu"}},
-		DeviceIDs:    []string{"GPU-0", "GPU-0", "GPU-1"},
+		DeviceIDs:    []string{"GPU-0", "GPU-1"},
 	}
-	if len(req[0].DeviceIDs) != 3 || req[0].Driver != want.Driver {
-		t.Fatalf("%+v", req[0])
-	}
-	for i := range want.DeviceIDs {
-		if req[0].DeviceIDs[i] != want.DeviceIDs[i] {
-			t.Fatalf("idx %d: got %q want %q", i, req[0].DeviceIDs[i], want.DeviceIDs[i])
-		}
-	}
-}
-
-func TestGpuDeviceRequests_All(t *testing.T) {
-	req := gpuDeviceRequests("all")
-	if len(req) != 1 || len(req[0].DeviceIDs) != 1 || req[0].DeviceIDs[0] != "all" {
+	if req[0].Driver != want.Driver || len(req[0].DeviceIDs) != 2 {
 		t.Fatalf("%+v", req[0])
 	}
 }

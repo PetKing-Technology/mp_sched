@@ -181,7 +181,7 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 			p.fire(ctx, callback.EventFailed, t2.TaskID)
 			return fmt.Errorf("list docker gpu tasks: %w", err)
 		}
-		if err := docker.CheckDockerGPUOccupancy(p.Cfg.Docker.HostResources.GPUIDs, tasks); err != nil {
+		if err := docker.CheckDockerGPUOccupancy(p.Cfg.Docker.HostResources, tasks); err != nil {
 			_ = p.Repo.UpdateStatus(t2.TaskID, model.TaskStatusFailed)
 			p.fire(ctx, callback.EventFailed, t2.TaskID)
 			return fmt.Errorf("%w: %s", taskrepo.ErrResourceCheck, err.Error())

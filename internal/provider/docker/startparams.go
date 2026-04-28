@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 
+	"mp_sched/internal/config"
 	"mp_sched/internal/model"
 )
 
@@ -38,7 +39,7 @@ type HostConfigSnapshot struct {
 	NanoCPUs       int64                    `json:"nano_cpus,omitempty"`
 	Memory         int64                    `json:"memory_bytes,omitempty"`
 	DeviceRequests []DeviceRequestSnapshot  `json:"device_requests,omitempty"`
-	// ResGPU 与 DeviceRequests 等价说明：res_gpu 支持 0/1/多个 id（逗号分隔）；生产常见仅 1 个，如 "GPU-0"
+	// ResGPU 任务侧「是否需要 GPU」；具体 device id 来自 [docker.host_resources]
 	ResGPU      string            `json:"res_gpu_input,omitempty"`
 	Mounts      []MountSnapshot   `json:"mounts,omitempty"`
 	NetworkMode string            `json:"network_mode,omitempty"`
@@ -227,11 +228,15 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 	if err != nil {
 		return "", nil, nil, err
 	}
+	var hr *config.DockerHostResources
+	if c.cfg != nil {
+		hr = &c.cfg.HostResources
+	}
 	hostCfg = &container.HostConfig{
 		Resources: container.Resources{
 			NanoCPUs:       nano,
 			Memory:         mem,
-			DeviceRequests: gpuDeviceRequests(t.ResGPU),
+			DeviceRequests: gpuDeviceRequestsForTask(t.ResGPU, hr),
 		},
 		Mounts:     mnts,
 		AutoRemove: spec.AutoRemove,

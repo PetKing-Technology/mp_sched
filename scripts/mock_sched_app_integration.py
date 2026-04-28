@@ -54,7 +54,7 @@ UNI_DOCK_SUBMIT_BODY: dict[str, Any] = {
     "image": "uni_dock_zcc:v4",
     "res_cpu": "4",
     "res_memory": "16Gi",
-    "res_gpu": "all",
+    "res_gpu": "true",
     "business": {
         "command": [
             "python",

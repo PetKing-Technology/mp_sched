@@ -133,14 +133,14 @@ flowchart LR
 
 代码：`internal/provider/docker/gpuslots.go`，在 `pipeline.executeStart` 的「事务外」阶段被调用。
 
-- `host_resources.gpu_ids` 是数组；**每一项为一个槽位**。同一物理 device id 出现 n 次表示该卡上至多可并发 n 个任务（适合未启用 MPS / MIG 时整卡共享）。
-- 单任务 `res_gpu` 用逗号分隔 device id；同一 id 重复 m 次表示本任务一次性占 m 槽。
-- `res_gpu = "all"` 视为占满 `gpu_ids` 中声明的全部槽位。
-- 校验：汇总当前所有 `provider=docker` 且 `status IN (admitted, running)` 的 start 任务的 `res_gpu`，按 id 求和；任一 id 总占用 > 槽位数 → 任务失败。
+- `host_resources.gpu_ids`：**唯一 GPU 配置**。多重集定义各 device id 的**并发槽数**；任务需要 GPU 时，对该列表**按首次出现顺序去重**得到写入容器的 device id。
+- 任务字段 `res_gpu`：仅 **`1` / `true` / `yes` / `on`**（不区分大小写）表示需要 GPU；不在请求中传具体 device id。
+- 单任务占用槽数 = 去重后的每个 device id **各 1**（同一任务对同一物理卡只计一槽；多卡则每卡各 1）。
+- 校验：汇总当前所有 `provider=docker` 且 `status IN (admitted, running)` 的 start 任务；任一 id 总占用 > 槽位数 → 任务失败。
 - 剩余槽位（旁路读取）：`docker.RemainingGPUSlots(hostCap, used)`。
-- 未配置 `gpu_ids` 时不做 GPU 槽位校验，开发机兼容。
+- 未配置 `gpu_ids` 时：若无任务需要 GPU则跳过校验；**若存在需要 GPU 的任务**则会失败（须配置槽位表与挂载 id）。
 
-向 Docker 下发：`gpuDeviceRequests` 保留重复 device id 不去重，与「占两槽」的语义一致。
+向 Docker 下发：`DeviceRequests.device_ids` 由上述配置解析，可含重复 id。
 
 ---
 

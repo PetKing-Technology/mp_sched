@@ -88,8 +88,8 @@ docker:
     # secret_key: ""
     # use_ssl: true
   # 本机资源上限（CPU/内存走 ResourceCheck）
-  # gpu_ids 每项 = 1 槽，同一 device id 写 n 次 = n 个并发槽
+  # gpu_ids：多重集 = 各卡并发槽数；任务要 GPU 时按首次出现顺序去重写入 DeviceRequests
   # host_resources:
   #   max_cpu: "32"
-  #   max_memory: "512Gi"
+  #   max_memory: "512GiB"
   #   gpu_ids: ["GPU-0", "GPU-0", "GPU-1"]

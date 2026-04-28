@@ -122,15 +122,14 @@ CPU / 内存通过 `Provider.ResourceCheck` 比对；GPU 槽位在 pipeline 中�
 |----|------|
 | `max_cpu` | 字符串如 `"32"` 或 `"32000m"`；任务 `res_cpu` 不得超过本值。空 = 不校验 |
 | `max_memory` | 字符串；任务 `res_memory` 不得超过本值。空 = 不校验。支持与 `github.com/docker/go-units` / `RAMInBytes` 相同的写法（如 `512GiB`、`512gb`、`512g`），并**兼容 Kubernetes 二进制写法** `Mi` / `Gi` / `Ti`（无尾字母 `B`） |
-| `gpu_ids` | 字符串数组；**每一项 = 一个 GPU 槽位**（多重集语义）。同一 device id 出现 n 次表示该卡上至多并发 n 个任务。空数组 = 不校验 GPU 槽位（开发机兼容） |
+| `gpu_ids` | 字符串数组；**同一语义两重作用**：① **多重集槽位** — 每项 1 槽，同一 device id 出现 n 次表示该卡上至多 n 路并发「需要 GPU」的任务；② **挂载列表** — 任务 `res_gpu` 为开时，对列表按**首次出现顺序去重**后写入容器 `DeviceRequests`（每个 id 在容器内挂一次）。**不在请求里传 GPU 编号** |
 
 GPU 行为补充：
 
-- 单任务 `res_gpu` 用逗号分隔 device id；同一 id 重复 m 次 = 该任务一次性占 m 槽。
-- `res_gpu = "all"` = 占满 `gpu_ids` 中声明的全部槽位。
+- 任务字段 `res_gpu`：开 — **`1` / `true` / `yes` / `on`**（不区分大小写）；其余均为关。
+- 单任务槽位占用 = 去重后的每个 distinct id **各计 1**（同一任务不会在单一 id 上因 `gpu_ids` 重复而多占槽；`gpu_ids` 的重复只抬高**并发路数**上限）。
 - 任一 id 总占用 > 槽位数时本任务 `failed`（错误语义同 `ResourceCheck` 类失败）。
 - 旁路读取剩余槽位：`docker.RemainingGPUSlots(hostCap, used)`。
-- 向 Docker 下发的 `DeviceRequests` 不去重，重复 device id 直接透传，与「占两槽」语义一致。
 
 ### 9.3 `docker.mounts`
 
