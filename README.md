@@ -43,7 +43,7 @@
    make down
    ```
 
-`configs/development.yaml` 默认指向 compose 中 PostgreSQL `127.0.0.1:5433/mp_sched`。
+`configs/development.yaml` 默认指向 compose 中 PostgreSQL `127.0.0.1:5438/mp_sched`。
 
 ## 容器部署
 

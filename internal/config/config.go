@@ -179,7 +179,7 @@ func Load(path string) (*App, error) {
 func Default() *App {
 	return &App{
 		Server:   Server{Addr: ":8080", LogLevel: "info"},
-		Database: Database{DSN: "postgres://postgres:postgres@127.0.0.1:5433/mp_sched?sslmode=disable", LogQueries: false},
+		Database: Database{DSN: "postgres://postgres:postgres@127.0.0.1:5438/mp_sched?sslmode=disable", LogQueries: false},
 		Scheduler: Scheduler{
 			MaxConcurrentRunning: 20,
 			MaxConcurrentSlow:    3,

@@ -41,15 +41,15 @@ test:
 
 # 默认 DSN 指向 make up 后的本机 Postgres；可 export E2E_DSN=... 覆盖
 e2e:
-	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5433/mp_sched?sslmode=disable} go test -count=1 -v -timeout=300s ./e2e/...'
+	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5438/mp_sched?sslmode=disable} go test -count=1 -v -timeout=300s ./e2e/...'
 
 # 会触发 logDockerStartParamsPreview；worker 用例在默认模式下走真实 Run（非 stub 时需可拉 alpine）
 e2e-spec:
-	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5433/mp_sched?sslmode=disable} go test -count=1 -v -timeout=300s ./e2e/ -run "TestE2E(PostTasksReturnsServerTaskID|WorkerPipelineReachesRunning|ResGPURoundTrip)"'
+	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5438/mp_sched?sslmode=disable} go test -count=1 -v -timeout=300s ./e2e/ -run "TestE2E(PostTasksReturnsServerTaskID|WorkerPipelineReachesRunning|ResGPURoundTrip)"'
 
 # 需已 make up（或至少 Postgres+CH 可达）。CH 与 docker-compose 一致时可不设 E2E_CH_USER/E2E_CH_PASSWORD
 e2e-full:
-	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5433/mp_sched?sslmode=disable} E2E_CH_ADDR=$${E2E_CH_ADDR:-127.0.0.1:9000} go test -count=1 -v -timeout=300s ./e2e/...'
+	bash -c 'E2E_DSN=$${E2E_DSN:-postgres://postgres:postgres@127.0.0.1:5438/mp_sched?sslmode=disable} E2E_CH_ADDR=$${E2E_CH_ADDR:-127.0.0.1:9000} go test -count=1 -v -timeout=300s ./e2e/...'
 
 build:
 	@mkdir -p bin

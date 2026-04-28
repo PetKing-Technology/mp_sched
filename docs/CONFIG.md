@@ -175,7 +175,7 @@ GPU 行为补充：
 
 ## 12. 与 docker-compose 对齐
 
-`configs/development.yaml` 默认与 `docker-compose.yaml` 中 PostgreSQL `127.0.0.1:5433/mp_sched`、ClickHouse 默认账号一致，便于 `make up && make run-controller` 直接联调。
+`configs/development.yaml` 默认与 `docker-compose.yaml` 中 PostgreSQL `127.0.0.1:5438/mp_sched`、ClickHouse 默认账号一致，便于 `make up && make run-controller` 直接联调。
 
 ## 13. 配置共享与多份配置
 
