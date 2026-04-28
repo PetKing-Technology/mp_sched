@@ -259,7 +259,7 @@ func logDockerStartParamsPreview(t *testing.T, cfg *config.App, task *model.Task
 func TestE2EHealthz(t *testing.T) {
 	base, _, _, _, _, cleanup := newHarness(t)
 	defer cleanup()
-	res, err := http.Get(base + "/healthz")
+	res, err := http.Get(base + api.RoutePrefixV1 + "/healthz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestE2EPostTasksReturnsServerTaskID(t *testing.T) {
 			"user_id": "user-9"
 		}
 	}`
-	res, err := http.Post(base+"/v1/tasks", "application/json", bytes.NewBufferString(body))
+	res, err := http.Post(base+api.RoutePrefixV1+"/tasks", "application/json", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestE2EWorkerPipelineReachesRunning(t *testing.T) {
 		"res_memory": "32M",
 		"business": {"type": "config", "config_mode": "app"}
 	}`
-	res, err := http.Post(base+"/v1/tasks", "application/json", bytes.NewBufferString(payload))
+	res, err := http.Post(base+api.RoutePrefixV1+"/tasks", "application/json", bytes.NewBufferString(payload))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestE2EWorkerPipelineReachesRunning(t *testing.T) {
 		deadline = time.Now().Add(2 * time.Minute)
 	}
 	for time.Now().Before(deadline) {
-		gr, err := http.Get(base + "/v1/tasks/" + enq.TaskID)
+		gr, err := http.Get(base + api.RoutePrefixV1 + "/tasks/" + enq.TaskID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,7 +440,7 @@ func TestE2EResGPURoundTrip(t *testing.T) {
 		"res_gpu": "GPU-0,GPU-1",
 		"business": {"type": "config", "config_mode": "app"}
 	}`
-	res, err := http.Post(base+"/v1/tasks", "application/json", bytes.NewBufferString(body))
+	res, err := http.Post(base+api.RoutePrefixV1+"/tasks", "application/json", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestE2EResGPURoundTrip(t *testing.T) {
 	if err := json.Unmarshal(b, &enq); err != nil || enq.TaskID == "" {
 		t.Fatalf("task_id: %v", err)
 	}
-	gr, err := http.Get(base + "/v1/tasks/" + enq.TaskID)
+	gr, err := http.Get(base + api.RoutePrefixV1 + "/tasks/" + enq.TaskID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -48,7 +48,7 @@ func parseLimit(q string) int {
 	return n
 }
 
-// GET /v1/telemetry/scheduler-logs
+// GET /api/sched/v1/telemetry/scheduler-logs
 func (s *Server) getSchedulerLogs(w http.ResponseWriter, r *http.Request) {
 	conn, db, ok := s.chConn(w, r)
 	if !ok {
@@ -71,7 +71,7 @@ func (s *Server) getSchedulerLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": rows})
 }
 
-// GET /v1/telemetry/controller-logs  —  等同 service=mp-controller 的调度日志
+// GET /api/sched/v1/telemetry/controller-logs  —  等同 service=mp-controller 的调度日志
 func (s *Server) getControllerLogs(w http.ResponseWriter, r *http.Request) {
 	conn, db, ok := s.chConn(w, r)
 	if !ok {
@@ -94,7 +94,7 @@ func (s *Server) getControllerLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": rows, "service": telemetry.ServiceController})
 }
 
-// GET /v1/telemetry/docker-stats
+// GET /api/sched/v1/telemetry/docker-stats
 func (s *Server) getDockerStats(w http.ResponseWriter, r *http.Request) {
 	conn, db, ok := s.chConn(w, r)
 	if !ok {
@@ -115,7 +115,7 @@ func (s *Server) getDockerStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": rows})
 }
 
-// GET /v1/telemetry/docker-log-lines
+// GET /api/sched/v1/telemetry/docker-log-lines
 func (s *Server) getDockerLogLines(w http.ResponseWriter, r *http.Request) {
 	conn, db, ok := s.chConn(w, r)
 	if !ok {

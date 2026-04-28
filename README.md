@@ -55,8 +55,9 @@ make build   # 输出 bin/mp-controller、bin/mp-worker
 
 部署要点：
 
-- **同一份配置**：两进程都读 `-config <path>` 指定的 YAML/TOML，整文件反序列化；不需要的段保留为空或注释即可。也可以为两者各挂载一份不同文件（例如 controller 关闭 `[reconciler]` 与 `[telemetry]`，worker 完整启用）。
+- **同一份配置**：两进程都读 `-config <path>` 指定的 **YAML**，整文件反序列化；不需要的段保留为空或注释即可。也可以为两者各挂载一份不同文件（例如 controller 关闭 `reconciler` 与 `telemetry`，worker 完整启用）。
 - **HTTP 端口**：由 `controller.http.addr`（优先）或 `server.addr` 决定，例如 `":8080"`；compose / k8s 里再做端口映射。
+- **HTTP 路径前缀**：对外 REST 统一为 **`/api/sched/v1`**（例如 `GET /api/sched/v1/healthz`、`POST /api/sched/v1/tasks`）；常量见 `internal/api.RoutePrefixV1`。
 - **HTTP 仅在 controller**：worker 不监听 HTTP，但需要能访问 PG / Docker daemon / 业务 callback。
 - **无状态扩展**：可起多个 `mp-worker`，通过 `worker.allowed_providers` 做 provider 分片；`mp-controller` 也可水平扩展（无内存状态）。
 - **Docker provider**：worker 容器需挂 `/var/run/docker.sock` 才能驱动宿主 Docker；要采集容器 stats / 日志请额外开 `[clickhouse]` 与 `[telemetry]`。

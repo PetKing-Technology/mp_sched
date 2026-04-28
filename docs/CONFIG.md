@@ -53,6 +53,8 @@ go run ./cmd/mp-worker     -config configs/development.yaml
 | `enable` | 是否启动 HTTP 服务 |
 | `addr` | 监听地址，例如 `:8080`；可空，空则回退到 `server.addr` |
 
+**路由**：进程内挂载在 **`/api/sched/v1`** 下（健康检查、任务与遥测 HTTP 皆为此前缀；代码常量 `internal/api.RoutePrefixV1`）。
+
 部署提示：容器化时通常配置 `controller.http.addr: ":8080"`，再由编排做端口映射。
 
 ## 6. callback

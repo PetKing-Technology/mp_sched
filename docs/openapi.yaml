@@ -7,9 +7,9 @@ info:
     详细字段、状态机与事件名见 docs/API.md 与 docs/ARCHITECTURE.md。
 servers:
   - url: http://127.0.0.1:8080
-    description: 本地（controller.http.addr 或回退 server.addr）
+    description: 本地根 URL；paths 以 /api/sched/v1 开头（与 controller.http.addr 一致）
 paths:
-  /healthz:
+  /api/sched/v1/healthz:
     get:
       summary: 存活
       responses:
@@ -22,7 +22,7 @@ paths:
                 properties:
                   ok: { type: boolean }
 
-  /v1/tasks:
+  /api/sched/v1/tasks:
     get:
       summary: 列表
       parameters:
@@ -67,7 +67,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/tasks/{taskID}:
+  /api/sched/v1/tasks/{taskID}:
     get:
       summary: 单条
       parameters:
@@ -89,7 +89,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/tasks/{taskID}/stop:
+  /api/sched/v1/tasks/{taskID}/stop:
     post:
       summary: 对目标 workload 发 stop 入队
       parameters:
@@ -117,7 +117,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/tasks/{taskID}/restart:
+  /api/sched/v1/tasks/{taskID}/restart:
     post:
       summary: 重启 start 工作负载（终态克隆；running/admitted 时先入队 stop 再克隆新 start）
       parameters:
@@ -157,7 +157,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /v1/telemetry/scheduler-logs:
+  /api/sched/v1/telemetry/scheduler-logs:
     get:
       summary: ClickHouse 调度日志（需 clickhouse.enable）
       parameters:
@@ -181,7 +181,7 @@ paths:
         "502": { description: clickhouse 连接或 schema 失败 }
         "503": { description: clickhouse 未启用或不可用 }
 
-  /v1/telemetry/controller-logs:
+  /api/sched/v1/telemetry/controller-logs:
     get:
       summary: 仅 controller（service=mp-controller）的调度日志
       parameters:
@@ -202,7 +202,7 @@ paths:
         "502": { description: clickhouse 连接或 schema 失败 }
         "503": { description: clickhouse 未启用或不可用 }
 
-  /v1/telemetry/docker-stats:
+  /api/sched/v1/telemetry/docker-stats:
     get:
       summary: 容器资源采样
       parameters:
@@ -220,7 +220,7 @@ paths:
         "502": { description: clickhouse 连接或 schema 失败 }
         "503": { description: clickhouse 未启用 }
 
-  /v1/telemetry/docker-log-lines:
+  /api/sched/v1/telemetry/docker-log-lines:
     get:
       summary: 容器日志行
       parameters:

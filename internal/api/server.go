@@ -17,6 +17,9 @@ import (
 	"mp_sched/internal/taskrepo"
 )
 
+// RoutePrefixV1 对外 HTTP API 统一前缀（健康检查亦挂载其下，便于网关一条 path 规则）。
+const RoutePrefixV1 = "/api/sched/v1"
+
 // Server HTTP API（go-chi）
 type Server struct {
 	H *controller.Handlers
@@ -33,10 +36,10 @@ func (s *Server) NewHandler() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	})
-	r.Route("/v1", func(r chi.Router) {
+	r.Route(RoutePrefixV1, func(r chi.Router) {
+		r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		})
 		r.Post("/tasks", s.postTasks)
 		r.Get("/tasks", s.getTasks)
 		r.Get("/tasks/{taskID}", s.getTask)
@@ -165,10 +168,10 @@ func (s *Server) postStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"ok":         true,
-		"task_id":    t.TaskID,
-		"status":     t.Status,
-		"target_id":  tid,
-		"data":       taskToView(t),
+		"ok":        true,
+		"task_id":   t.TaskID,
+		"status":    t.Status,
+		"target_id": tid,
+		"data":      taskToView(t),
 	})
 }

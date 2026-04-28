@@ -10,7 +10,7 @@ import (
 	"mp_sched/internal/controller"
 )
 
-// POST /v1/tasks/{taskID}/restart
+// POST /api/sched/v1/tasks/{taskID}/restart
 func (s *Server) postRestart(w http.ResponseWriter, r *http.Request) {
 	if s.H == nil {
 		writeErr(w, http.StatusServiceUnavailable, "unconfigured")

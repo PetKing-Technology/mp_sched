@@ -1,6 +1,6 @@
 # HTTP API
 
-Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）或 `server.addr` 决定，默认 `:8080`。
+Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）或 `server.addr` 决定，默认 `:8080`。**所有业务接口**统一挂在路径前缀 **`/api/sched/v1`** 下（健康检查亦在此前缀内）。
 
 `Content-Type: application/json`。所有时间字段为 RFC3339 UTC。任务 ID 由本服务在入队时生成（UUID），调用方不得指定。
 
@@ -8,7 +8,7 @@ Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）
 
 ## 1. 健康
 
-### `GET /healthz`
+### `GET /api/sched/v1/healthz`
 
 200：
 
@@ -20,7 +20,7 @@ Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）
 
 ## 2. 任务
 
-### 2.1 `POST /v1/tasks`
+### 2.1 `POST /api/sched/v1/tasks`
 
 创建一条 task，初始 `pending`。`task_id` 在响应中返回；后续查询、stop、restart 都用它做主键。
 
@@ -151,11 +151,11 @@ stop（也可使用下方便捷接口）：
 { "ok": false, "error": "provider required" }
 ```
 
-### 2.2 `GET /v1/tasks/{taskID}`
+### 2.2 `GET /api/sched/v1/tasks/{taskID}`
 
 `200` 含 `data: TaskView`；`404` 不存在。
 
-### 2.3 `GET /v1/tasks`
+### 2.3 `GET /api/sched/v1/tasks`
 
 查询参数：
 
@@ -178,7 +178,7 @@ stop（也可使用下方便捷接口）：
 }
 ```
 
-### 2.4 `POST /v1/tasks/{taskID}/stop`
+### 2.4 `POST /api/sched/v1/tasks/{taskID}/stop`
 
 对 `taskID` 指向的 start 工作负载入队一条 stop（`provider` 从目标继承）。请求体可空。
 
@@ -196,7 +196,7 @@ stop（也可使用下方便捷接口）：
 
 `400`：目标不是合法 workload；`404`：目标不存在。
 
-### 2.5 `POST /v1/tasks/{taskID}/restart`
+### 2.5 `POST /api/sched/v1/tasks/{taskID}/restart`
 
 对 start 工作负载克隆一条新 start：
 
@@ -265,21 +265,21 @@ callback 事件名：
 
 需配置 `[clickhouse].enable=true` 且进程能连上 ClickHouse（默认账号见 `internal/config/clickhouse_defaults.go` 与 `docker-compose`）。首次请求会 `EnsureSchema` 建表。所有接口为 `GET`，`limit` 默认 100、最大 500，失败 `503` / `502`（未启用或连不上）。
 
-### 5.1 `GET /v1/telemetry/scheduler-logs`
+### 5.1 `GET /api/sched/v1/telemetry/scheduler-logs`
 
 全量调度 / 服务 slog（表 `scheduler_logs`）。
 
 查询参数：`service`、`level`、`msg`（子串匹配）、`since`（RFC3339）、`limit`。
 
-### 5.2 `GET /v1/telemetry/controller-logs`
+### 5.2 `GET /api/sched/v1/telemetry/controller-logs`
 
 同 5.1，固定 `service=mp-controller`，便于查 `enqueue` / `stop` / `restart` 等行。`level` / `msg` / `since` / `limit` 仍可用。
 
-### 5.3 `GET /v1/telemetry/docker-stats`
+### 5.3 `GET /api/sched/v1/telemetry/docker-stats`
 
 表 `docker_container_stats`：`task_id`、`container_id`（均可选）、`limit`。
 
-### 5.4 `GET /v1/telemetry/docker-log-lines`
+### 5.4 `GET /api/sched/v1/telemetry/docker-log-lines`
 
 表 `docker_log_lines`：`task_id`、`container_id`、`stream`（`stdout` / `stderr`）、`limit`。
 

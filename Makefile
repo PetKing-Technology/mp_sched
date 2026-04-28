@@ -12,7 +12,7 @@ help:
 	@echo "build           编译到 bin/"
 	@echo "run-controller  本机起 API（需先 make up 且表已迁移）"
 	@echo "run-worker     本机起 worker + reconciler"
-	@echo "smoke          对 :8080 做简单 HTTP 检查（需已 run-controller + run-worker）"
+	@echo "smoke          对 :8080 做简单 HTTP 检查（路径 /api/sched/v1；可设 BASE_URL / API_PREFIX）"
 	@echo "e2e            加载 configs/development.yaml（E2E_CONFIG 可改）；E2E_DSN 覆盖 dsn；E2E_STRICT_SCHED=1 不放宽并发；E2E_DOCKER=stub 不连引擎"
 	@echo "e2e-spec       同上，只跑会打印「docker create 前 spec」的用例；默认走真实 Run（worker 用例需本机 Docker）"
 	@echo "e2e-full       Postgres + 本机 CH 探针（E2E_CH_ADDR 默认 127.0.0.1:9000；账号见 config/clickhouse_defaults）"

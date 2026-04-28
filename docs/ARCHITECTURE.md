@@ -235,7 +235,7 @@ Docker Engine 没有「容器最长存活时间」原生开关，只能由调度
 | 执行链 | `internal/pipeline/pipeline.go` |
 | Worker 循环 / 扫描 | `internal/worker/runner.go`、`internal/worker/runtime_sweep.go` |
 | HTTP 入队 / restart | `internal/controller/http.go`、`internal/controller/restart.go` |
-| API 路由 | `internal/api/server.go`、`internal/api/restart.go`、`internal/api/telemetry.go` |
+| API 路由 | `internal/api/server.go`（前缀 `RoutePrefixV1=/api/sched/v1`）、`restart.go`、`telemetry.go` |
 | Docker provider | `internal/provider/docker/` |
 | GPU 槽位 | `internal/provider/docker/gpuslots.go` |
 | 回调 | `internal/callback/client.go` |
