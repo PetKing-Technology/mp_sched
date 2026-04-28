@@ -1,5 +1,10 @@
 bin/
 .env
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 *.out
 /coverage.out

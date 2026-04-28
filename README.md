@@ -86,7 +86,7 @@ make build   # 输出 bin/mp-controller、bin/mp-worker
 - [配置项说明](docs/CONFIG.md)
 - [HTTP API](docs/API.md)
 - [OpenAPI 3 片段](docs/openapi.yaml)（可导入 Postman / Swagger UI）
-- 配置示例：[configs/config.example.yaml](configs/config.example.yaml)、[configs/development.yaml](configs/development.yaml)
+- 配置：`configs/default.yaml`（`-config` 未传时的默认）、本地联调常用 `configs/development.yaml`（`make run-controller` / `make run-worker` 已写死后者）
 
 ## 构建与测试
 

@@ -7,6 +7,8 @@ go run ./cmd/mp-controller -config configs/development.yaml
 go run ./cmd/mp-worker     -config configs/development.yaml
 ```
 
+不带 `-config` 时，两个二进制都默认读取仓库内 **`configs/default.yaml`**（`cmd/mp-*/main.go` 的 `-config` 缺省值）。**`make run-controller` / `make run-worker`** 显式传入 **`configs/development.yaml`**，与 e2e 默认 `E2E_CONFIG` 一致，便于 `make up` 后直接联调。
+
 两个进程整文件反序列化为同一份 `App` 结构（`internal/config/config.go`），未涉及的段保留默认或注释；也可以为两进程分别挂载不同文件（例如 controller 关闭 `reconciler` 与 `telemetry`，worker 启用）。`ApplyDefaults` 会补全部分缺省，未写明字段为类型零值，**注意数字 `0` 的语义**（见下表）。
 
 ## 1. 根字段一览
