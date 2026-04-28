@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS %s.scheduler_logs (
   attrs String
 ) ENGINE = MergeTree()
 ORDER BY (ts, service)
-TTL ts + toIntervalDay(90)`, db),
+TTL toDateTime(ts) + toIntervalDay(90)`, db),
 		fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s.docker_container_stats (
   ts DateTime64(3, 'UTC'),
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS %s.docker_container_stats (
   pids UInt32
 ) ENGINE = MergeTree()
 ORDER BY (ts, task_id)
-TTL ts + toIntervalDay(60)`, db),
+TTL toDateTime(ts) + toIntervalDay(60)`, db),
 		fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %s.docker_log_lines (
   ts DateTime64(3, 'UTC'),
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS %s.docker_log_lines (
   line String
 ) ENGINE = MergeTree()
 ORDER BY (ts, task_id, container_id)
-TTL ts + toIntervalDay(30)`, db),
+TTL toDateTime(ts) + toIntervalDay(30)`, db),
 	}
 	for _, q := range stmts {
 		if err := conn.Exec(ctx, q); err != nil {
