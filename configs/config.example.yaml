@@ -1,0 +1,94 @@
+server:
+  addr: ":8080"
+  log_level: info
+
+database:
+  dsn: "postgres://postgres:postgres@127.0.0.1:5433/mp_sched?sslmode=disable"
+  log_queries: false
+
+scheduler:
+  max_concurrent_running: 20
+  max_concurrent_slow: 3
+  min_free_slots_for_fast: 4
+
+# 仅入队、校验、写 pending；执行交给 mp-worker
+controller:
+  http:
+    enable: true
+    addr: ""
+
+# worker / reconciler / 运行超时扫描会向业务方回调；token 放在 headers 里
+callback:
+  enable: false
+  url: "https://your-app.example.com/hooks/mp_sched"
+  method: "POST"
+  timeout_seconds: 10
+  headers: {}
+    # Authorization: "Bearer YOUR_TOKEN"
+    # X-Mp-Sched-Source: "mp-worker"
+  # 空 = 全部事件；要把 timeout 与 failed 区分时建议显式列出
+  events: []
+    # - admitted
+    # - running
+    # - succeeded
+    # - failed
+    # - stopped
+    # - timeout
+
+worker:
+  poll_ms: 200
+  admitted_timeout_seconds: 0
+  default_max_runtime_seconds: 3600
+  runtime_sweeper_interval_seconds: 300
+  # disable_runtime_sweeper: false
+  allowed_providers: []
+
+reconciler:
+  enable: false
+  interval_seconds: 10
+  # orphan_reap_enable: true
+  # orphan_reap_waits_s: [5, 15, 30]
+
+clickhouse:
+  enable: false
+  address: "127.0.0.1:9000"
+  database: "default"
+  user: "mp_sched"
+  password: "mp_sched_dev"
+  tls: false
+
+telemetry:
+  slog_to_clickhouse: false
+  docker_stats_interval_seconds: 0
+  docker_log_interval_seconds: 0
+  docker_log_tail_lines: 500
+  log_batch_size: 200
+  log_batch_flush_ms: 2000
+
+docker:
+  # data_dir 为空时 ApplyDefaults 落到 os.TempDir()/mp_sched-docker
+  # data_dir: "/var/lib/mp_sched/docker"
+  config_file_container_path: "/etc/mp_sched/config.json"
+  image_pull:
+    enable: false
+    # username: ""
+    # token: ""
+  # 静态 bind 挂载；host_path 必须存在，否则 Run 失败
+  # mounts:
+  #   - name: "shared"
+  #     host_path: "/data/host"
+  #     mount_path: "/data"
+  oss:
+    enable: false
+    # endpoint: "oss-cn-hangzhou.aliyuncs.com"
+    # region: "cn-hangzhou"
+    # bucket: "my-bucket"
+    # access_key: ""
+    # secret_key: ""
+    # use_ssl: true
+  # 本机资源上限（CPU/内存走 ResourceCheck）
+  # gpu_ids 每项 = 1 槽，同一 device id 写 n 次 = n 个并发槽
+  # host_resources:
+  #   max_cpu: "32"
+  #   max_memory: "512Gi"
+  #   gpu_ids: ["GPU-0", "GPU-0", "GPU-1"]

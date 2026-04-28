@@ -1,0 +1,358 @@
+openapi: 3.0.3
+info:
+  title: mp_sched API
+  version: 0.2.0
+  description: |
+    任务入队与查询；执行由独立 worker 完成。
+    详细字段、状态机与事件名见 docs/API.md 与 docs/ARCHITECTURE.md。
+servers:
+  - url: http://127.0.0.1:8080
+    description: 本地（controller.http.addr 或回退 server.addr）
+paths:
+  /healthz:
+    get:
+      summary: 存活
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+
+  /v1/tasks:
+    get:
+      summary: 列表
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: provider
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskListResponse"
+    post:
+      summary: 入队
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitTask"
+      responses:
+        "201":
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnqueueResponse"
+        "400":
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/tasks/{taskID}:
+    get:
+      summary: 单条
+      parameters:
+        - in: path
+          name: taskID
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskResponse"
+        "404":
+          description: 不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/tasks/{taskID}/stop:
+    post:
+      summary: 对目标 workload 发 stop 入队
+      parameters:
+        - in: path
+          name: taskID
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: stop 请求已入队
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopResponse"
+        "400":
+          description: 不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 目标不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/tasks/{taskID}/restart:
+    post:
+      summary: 重启 start 工作负载（终态克隆；running/admitted 时先入队 stop 再克隆新 start）
+      parameters:
+        - in: path
+          name: taskID
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: 新任务已入队，可含 stop_task_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestartResponse"
+        "400":
+          description: 不合法
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: 不存在
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: 仍在 pending/processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: 未配置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/telemetry/scheduler-logs:
+    get:
+      summary: ClickHouse 调度日志（需 clickhouse.enable）
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 500 }
+        - in: query
+          name: service
+          schema: { type: string }
+        - in: query
+          name: level
+          schema: { type: string }
+        - in: query
+          name: msg
+          schema: { type: string, description: 子串匹配 msg }
+        - in: query
+          name: since
+          schema: { type: string, description: RFC3339 }
+      responses:
+        "200": { description: items }
+        "502": { description: clickhouse 连接或 schema 失败 }
+        "503": { description: clickhouse 未启用或不可用 }
+
+  /v1/telemetry/controller-logs:
+    get:
+      summary: 仅 controller（service=mp-controller）的调度日志
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: level
+          schema: { type: string }
+        - in: query
+          name: msg
+          schema: { type: string }
+        - in: query
+          name: since
+          schema: { type: string }
+      responses:
+        "200": { description: items }
+        "502": { description: clickhouse 连接或 schema 失败 }
+        "503": { description: clickhouse 未启用或不可用 }
+
+  /v1/telemetry/docker-stats:
+    get:
+      summary: 容器资源采样
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: task_id
+          schema: { type: string }
+        - in: query
+          name: container_id
+          schema: { type: string }
+      responses:
+        "200": { description: items }
+        "502": { description: clickhouse 连接或 schema 失败 }
+        "503": { description: clickhouse 未启用 }
+
+  /v1/telemetry/docker-log-lines:
+    get:
+      summary: 容器日志行
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: task_id
+          schema: { type: string }
+        - in: query
+          name: container_id
+          schema: { type: string }
+        - in: query
+          name: stream
+          schema: { type: string, description: stdout 或 stderr }
+      responses:
+        "200": { description: items }
+        "502": { description: clickhouse 连接或 schema 失败 }
+        "503": { description: clickhouse 未启用 }
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        ok: { type: boolean, example: false }
+        error: { type: string }
+
+    SubmitTask:
+      type: object
+      required: [provider]
+      properties:
+        operation:
+          type: string
+          enum: [start, stop]
+          default: start
+        task_class:
+          type: string
+          description: fast 或 slow
+        provider:
+          type: string
+          description: 必须在 Registry 中注册
+        target_task_id:
+          type: string
+          description: stop 时必填
+        image:
+          type: string
+        res_cpu: { type: string }
+        res_memory: { type: string }
+        res_gpu:
+          type: string
+          description: 逗号分隔 device id 或 "all"；同一 id 重复 m 次表示占 m 槽
+        max_runtime_seconds:
+          type: integer
+          description: |
+            运行时长上限：
+            0 = 使用 worker.default_max_runtime_seconds（典型 3600，0 = 不限时）；
+            >0 = 自进入 running 起最多 N 秒；
+            <0 = 不在调度侧做运行超时。
+        business:
+          type: object
+          additionalProperties: true
+
+    Task:
+      type: object
+      properties:
+        task_id: { type: string, format: uuid }
+        business: { type: object, additionalProperties: true }
+        task_class: { type: string }
+        provider: { type: string }
+        operation: { type: string, enum: [start, stop] }
+        target_task_id: { type: string }
+        res_cpu: { type: string }
+        res_memory: { type: string }
+        res_gpu: { type: string }
+        max_runtime_seconds: { type: integer }
+        image: { type: string }
+        status:
+          type: string
+          enum: [pending, processing, admitted, running, succeeded, failed, stopped]
+        running_at:
+          type: string
+          format: date-time
+          description: 进入 running 的 UTC 时间，运行超时扫描以此为起点
+        runtime_ref:
+          type: string
+          description: provider 返回的引用（容器 ID 等）
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    EnqueueResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        task_id: { type: string }
+        status: { type: string }
+        data: { $ref: "#/components/schemas/Task" }
+
+    TaskResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        data: { $ref: "#/components/schemas/Task" }
+
+    TaskListResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+
+    StopResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        task_id: { type: string, description: 新 stop 请求的 task_id }
+        status: { type: string }
+        target_id: { type: string, description: 被 stop 的 start 任务 task_id }
+        data: { $ref: "#/components/schemas/Task" }
+
+    RestartResponse:
+      type: object
+      properties:
+        ok: { type: boolean }
+        new_task_id: { type: string }
+        data: { $ref: "#/components/schemas/Task" }
+        stop_task_id:
+          type: string
+          description: 当原任务为 admitted/running 时，先入队的 stop 任务 id
+        stop_data:
+          $ref: "#/components/schemas/Task"
