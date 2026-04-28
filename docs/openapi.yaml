@@ -272,7 +272,7 @@ components:
         res_memory: { type: string }
         res_gpu:
           type: string
-          description: 逗号分隔 device id 或 "all"；同一 id 重复 m 次表示占 m 槽
+          description: 是否使用 GPU；仅 1、true、yes、on（不区分大小写）为开；device id 来自 worker docker.host_resources.gpu_ids（去重）
         max_runtime_seconds:
           type: integer
           description: |

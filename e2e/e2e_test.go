@@ -437,7 +437,7 @@ func TestE2EResGPURoundTrip(t *testing.T) {
 		"image": "alpine:3.20",
 		"res_cpu": "1",
 		"res_memory": "128M",
-		"res_gpu": "GPU-0,GPU-1",
+		"res_gpu": "true",
 		"business": {"type": "config", "config_mode": "app"}
 	}`
 	res, err := http.Post(base+api.RoutePrefixV1+"/tasks", "application/json", bytes.NewBufferString(body))
@@ -469,8 +469,8 @@ func TestE2EResGPURoundTrip(t *testing.T) {
 	if err := json.Unmarshal(gb, &wrap); err != nil {
 		t.Fatal(err)
 	}
-	if wrap.Data.ResGPU != "GPU-0,GPU-1" {
-		t.Fatalf("res_gpu: want GPU-0,GPU-1, got %q", wrap.Data.ResGPU)
+	if wrap.Data.ResGPU != "true" {
+		t.Fatalf("res_gpu: want true, got %q", wrap.Data.ResGPU)
 	}
 	logTaskRow(t, repo, enq.TaskID)
 	if row, err := repo.Get(enq.TaskID); err == nil {

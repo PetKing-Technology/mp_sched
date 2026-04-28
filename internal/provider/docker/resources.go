@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"mp_sched/internal/config"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-units"
 )
@@ -54,31 +56,19 @@ func parseMemoryBytes(s string) (int64, error) {
 	return n, nil
 }
 
-// gpuDeviceRequests 从 res_gpu 生成 nvidia 设备请求；逗号分隔，同一 id 重复则多次传入 DeviceIDs（对应多槽绑同一物理设备）。
-func gpuDeviceRequests(resGPU string) []container.DeviceRequest {
-	s := strings.TrimSpace(resGPU)
-	if s == "" {
+// gpuDeviceRequestsForTask 在任务需要 GPU 时用 host_resources 解析出的 id 构造 NVIDIA DeviceRequest。
+func gpuDeviceRequestsForTask(resGPU string, hr *config.DockerHostResources) []container.DeviceRequest {
+	if !TaskWantsGPU(resGPU) {
+		return nil
+	}
+	ids, err := ResolveNVIDIADeviceIDsForAttach(hr)
+	if err != nil || len(ids) == 0 {
 		return nil
 	}
 	dr := container.DeviceRequest{
 		Driver:       "nvidia",
 		Capabilities: [][]string{{"gpu"}},
+		DeviceIDs:    ids,
 	}
-	if strings.EqualFold(s, "all") {
-		dr.DeviceIDs = []string{"all"}
-		return []container.DeviceRequest{dr}
-	}
-	parts := strings.Split(s, ",")
-	var ids []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ids = append(ids, p)
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	dr.DeviceIDs = ids
 	return []container.DeviceRequest{dr}
 }

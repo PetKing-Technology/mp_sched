@@ -127,7 +127,8 @@ type Docker struct {
 type DockerHostResources struct {
 	MaxCPU    string `mapstructure:"max_cpu" yaml:"max_cpu"`
 	MaxMemory string `mapstructure:"max_memory" yaml:"max_memory"`
-	// GPUIDs 每个元素是一槽；同一 device id 写 n 次表示最多 n 个任务（或单次 res_gpu 中 n 次引用）共用该物理 id
+	// GPUIDs 每个元素是一槽；同一 device id 写 n 次表示该卡上至多 n 路并发「需要 GPU」的任务。
+	// 任务开启 GPU 时，容器 DeviceRequests 使用本列表按首次出现顺序去重后的 device id（每个 id 在容器里挂一次；槽位仍按多重集计数）。
 	GPUIDs []string `mapstructure:"gpu_ids" yaml:"gpu_ids"`
 }
 

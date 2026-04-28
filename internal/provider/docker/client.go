@@ -168,6 +168,18 @@ func containerName(taskID string) string {
 }
 
 func (c *Client) pullImage(ctx context.Context, ref string) error {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return fmt.Errorf("empty image reference")
+	}
+	// 本地已有同名镜像时跳过拉取（避免仅本地 tag、Hub 无库时 ImagePull 失败）
+	_, _, err := c.cli.ImageInspectWithRaw(ctx, ref)
+	if err == nil {
+		return nil
+	}
+	if !errdefs.IsNotFound(err) {
+		return fmt.Errorf("docker image inspect %q: %w", ref, err)
+	}
 	opts := types.ImagePullOptions{}
 	if c.cfg != nil && c.cfg.ImagePull.Enable {
 		u := strings.TrimSpace(c.cfg.ImagePull.Username)

@@ -51,10 +51,11 @@ type Task struct {
 	// TargetTaskID 当 Operation=stop 时，要停止的「start 类任务」的 task_id
 	TargetTaskID string `gorm:"type:text;index" json:"target_task_id,omitempty"`
 
-	// ResCPU/ResMemory/ResGPU 任务请求的算力（k8s 风格字符串），在任务体上显式传递
+	// ResCPU/ResMemory 任务请求的算力（k8s 风格字符串），在任务体上显式传递
 	ResCPU    string `gorm:"type:text" json:"res_cpu,omitempty"`
 	ResMemory string `gorm:"type:text" json:"res_memory,omitempty"`
-	ResGPU    string `gorm:"type:text" json:"res_gpu,omitempty"`
+	// ResGPU 是否使用 GPU：仅 1/true/yes/on（不区分大小写）为开；NVIDIA device id 仅来自 docker.host_resources.gpu_ids（去重后下发）
+	ResGPU string `gorm:"type:text" json:"res_gpu,omitempty"`
 
 	// Extra 为不透明 JSON，存 placement、回调摘要、资源快照等
 	Extra datatypes.JSON `gorm:"type:jsonb" json:"-"`

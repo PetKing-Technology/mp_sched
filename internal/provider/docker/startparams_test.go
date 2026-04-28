@@ -13,7 +13,11 @@ import (
 
 func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 	t.Parallel()
-	dck, err := New(&config.Docker{})
+	dck, err := New(&config.Docker{
+		HostResources: config.DockerHostResources{
+			GPUIDs: []string{"GPU-0"},
+		},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +29,7 @@ func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 		Image:     "alpine:3.20",
 		ResCPU:    "1",
 		ResMemory: "128M",
-		ResGPU:    "GPU-0", // 常见：只挂 1 张；多个用逗号，见 res_gpu
+		ResGPU:    "true",
 		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
 	}
 	snap, err := dck.PreviewStartParams(ctx, task, PreviewStartParamsOptions{SkipPull: true})
@@ -39,7 +43,7 @@ func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 	if len(ids) != 1 || ids[0] != "GPU-0" {
 		t.Fatalf("device_ids: %v", ids)
 	}
-	if snap.Host.ResGPU != "GPU-0" {
+	if snap.Host.ResGPU != "true" {
 		t.Fatalf("ResGPU: %q", snap.Host.ResGPU)
 	}
 	b, _ := json.MarshalIndent(snap, "", "  ")
@@ -48,13 +52,17 @@ func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 
 func TestStartParamsSnapshot_MultiGPUInOneRequest(t *testing.T) {
 	t.Parallel()
-	dck, _ := New(&config.Docker{})
+	dck, _ := New(&config.Docker{
+		HostResources: config.DockerHostResources{
+			GPUIDs: []string{"GPU-0", "GPU-1"},
+		},
+	})
 	task := &model.Task{
 		TaskID:    "22222222-2222-2222-2222-222222222222",
 		Provider:  "docker",
 		Operation: model.OperationStart,
 		Image:     "alpine:3.20",
-		ResGPU:    "GPU-0,GPU-1", // 代码支持多个 device id，逗号分隔
+		ResGPU:    "yes",
 		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
 	}
 	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
@@ -62,21 +70,25 @@ func TestStartParamsSnapshot_MultiGPUInOneRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := snap.Host.DeviceRequests[0].DeviceIDs
-	if len(ids) != 2 {
-		t.Fatalf("want 2 device ids, got %v", ids)
+	if len(ids) != 2 || ids[0] != "GPU-0" || ids[1] != "GPU-1" {
+		t.Fatalf("want [GPU-0 GPU-1], got %v", ids)
 	}
 	t.Logf("device_ids: %v", ids)
 }
 
-func TestStartParamsSnapshot_SameGPUIDListedTwice(t *testing.T) {
+func TestStartParamsSnapshot_DedupedDeviceIDsFromMultiset(t *testing.T) {
 	t.Parallel()
-	dck, _ := New(&config.Docker{})
+	dck, _ := New(&config.Docker{
+		HostResources: config.DockerHostResources{
+			GPUIDs: []string{"GPU-0", "GPU-0"},
+		},
+	})
 	task := &model.Task{
 		TaskID:    "33333333-3333-3333-3333-333333333333",
 		Provider:  "docker",
 		Operation: model.OperationStart,
 		Image:     "alpine:3.20",
-		ResGPU:    "GPU-0,GPU-0",
+		ResGPU:    "1",
 		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
 	}
 	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
@@ -84,7 +96,8 @@ func TestStartParamsSnapshot_SameGPUIDListedTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := snap.Host.DeviceRequests[0].DeviceIDs
-	if len(ids) != 2 || ids[0] != "GPU-0" || ids[1] != "GPU-0" {
+	// gpu_ids 为多重集，写入容器时按 id 去重，仅挂一次 GPU-0
+	if len(ids) != 1 || ids[0] != "GPU-0" {
 		t.Fatalf("device_ids: %v", ids)
 	}
 }

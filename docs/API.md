@@ -35,7 +35,7 @@ Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）
 | `image` | string | docker 时二选一 | 容器镜像；不填则取 `business.image` |
 | `res_cpu` | string | 否 | 例如 `"1"`、`"500m"` |
 | `res_memory` | string | 否 | 例如 `"512Mi"`、`"2Gi"` |
-| `res_gpu` | string | 否 | 逗号分隔 device id，或 `"all"`；同一 id 重复 m 次 = 占 m 槽 |
+| `res_gpu` | string | 否 | 是否使用 GPU：仅 `1` / `true` / `yes` / `on`（不区分大小写）为开。device id 仅来自 `docker.host_resources.gpu_ids`（去重后写入容器） |
 | `max_runtime_seconds` | int | 否 | 运行时长上限（秒），见下表 |
 | `business` | object | 否 | 业务自定义 JSON；缺省 `{}` |
 
@@ -94,7 +94,7 @@ start，`type=config`：
   "image": "alpine:3.20",
   "res_cpu": "1",
   "res_memory": "512Mi",
-  "res_gpu": "GPU-0",
+  "res_gpu": "true",
   "max_runtime_seconds": 7200,
   "business": {
     "type": "config",
