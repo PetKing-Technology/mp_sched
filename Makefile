@@ -1,5 +1,5 @@
 # mp_sched 本地开发
-.PHONY: up down test build e2e e2e-spec e2e-full help run-controller run-worker smoke clickhouse-up clickhouse-down clickhouse-client
+.PHONY: up down test build e2e e2e-spec e2e-full help run-controller run-worker smoke clickhouse-up clickhouse-down clickhouse-client ch-logs
 
 help:
 	@echo "up              启动 docker-compose 中的依赖（PostgreSQL、ClickHouse）"
@@ -7,6 +7,7 @@ help:
 	@echo "clickhouse-up   仅启动 ClickHouse（原生 :9000，HTTP :8123）"
 	@echo "clickhouse-down 停止 ClickHouse 容器"
 	@echo "clickhouse-client  进入本机 clickhouse 容器的 client（需已 clickhouse-up）"
+	@echo "ch-logs         查 CH 最近数据；例: make ch-logs ARGS='scheduler 100'"
 	@echo "test            go test"
 	@echo "build           编译到 bin/"
 	@echo "run-controller  本机起 API（需先 make up 且表已迁移）"
@@ -31,6 +32,9 @@ clickhouse-down:
 # 交互式；查询示例：SHOW TABLES FROM default;
 clickhouse-client:
 	docker compose exec -it clickhouse clickhouse-client
+
+ch-logs:
+	bash scripts/ch_logs.sh $(ARGS)
 
 test:
 	go test ./...
