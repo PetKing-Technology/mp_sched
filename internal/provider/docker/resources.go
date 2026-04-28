@@ -2,12 +2,24 @@ package docker
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-units"
 )
+
+// kubernetesBinaryRAM 匹配 K8s 资源写法 Mi/Gi/Ti…（无尾字母 B）；docker/go-units 的 RAMInBytes 需要 gb / mib / gib 等形式。
+var kubernetesBinaryRAM = regexp.MustCompile(`(?i)^([0-9]*\.?[0-9]+)([kmgtpe])i$`)
+
+func normalizeMemoryStringForRAM(s string) string {
+	s = strings.TrimSpace(s)
+	if m := kubernetesBinaryRAM.FindStringSubmatch(s); m != nil {
+		return m[1] + strings.ToLower(m[2]) + "ib"
+	}
+	return s
+}
 
 // parseNanoCPUs 解析 res_cpu：空=0（不限制）；支持 "1"/"0.5"/"500m"（毫核）
 func parseNanoCPUs(s string) (int64, error) {
@@ -31,7 +43,7 @@ func parseNanoCPUs(s string) (int64, error) {
 }
 
 func parseMemoryBytes(s string) (int64, error) {
-	s = strings.TrimSpace(s)
+	s = normalizeMemoryStringForRAM(s)
 	if s == "" {
 		return 0, nil
 	}

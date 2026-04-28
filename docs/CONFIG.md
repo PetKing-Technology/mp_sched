@@ -121,7 +121,7 @@ CPU / 内存通过 `Provider.ResourceCheck` 比对；GPU 槽位在 pipeline 中�
 | 键 | 含义 |
 |----|------|
 | `max_cpu` | 字符串如 `"32"` 或 `"32000m"`；任务 `res_cpu` 不得超过本值。空 = 不校验 |
-| `max_memory` | 字符串如 `"512Gi"`；任务 `res_memory` 不得超过本值。空 = 不校验 |
+| `max_memory` | 字符串；任务 `res_memory` 不得超过本值。空 = 不校验。支持与 `github.com/docker/go-units` / `RAMInBytes` 相同的写法（如 `512GiB`、`512gb`、`512g`），并**兼容 Kubernetes 二进制写法** `Mi` / `Gi` / `Ti`（无尾字母 `B`） |
 | `gpu_ids` | 字符串数组；**每一项 = 一个 GPU 槽位**（多重集语义）。同一 device id 出现 n 次表示该卡上至多并发 n 个任务。空数组 = 不校验 GPU 槽位（开发机兼容） |
 
 GPU 行为补充：
