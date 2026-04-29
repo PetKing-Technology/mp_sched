@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	dockercli "github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -18,6 +19,7 @@ import (
 	"mp_sched/internal/recordrepo"
 	"mp_sched/internal/scheduler"
 	"mp_sched/internal/taskrepo"
+	"mp_sched/internal/telemetry"
 )
 
 // Pipeline 调度执行链；由 worker 在任务置为 processing 后调用 Dispatch
@@ -27,6 +29,8 @@ type Pipeline struct {
 	Reg  provider.Registry
 	Rec  *recordrepo.Repo
 	CB   *callback.Client
+	// DockerEng 可选；用于终态前补拉容器日志写入 ClickHouse
+	DockerEng *dockercli.Client
 }
 
 // SubmitInput 与 controller HTTP 入参一致
@@ -266,6 +270,7 @@ func (p *Pipeline) executeStop(ctx context.Context, t *model.Task) error {
 		p.fire(ctx, callback.EventFailed, t.TaskID)
 		return fmt.Errorf("stop: %w", err)
 	}
+	telemetry.FinalFlushDockerLogs(ctx, p.Cfg, p.DockerEng, target)
 	if err := p.Repo.UpdateStatus(target.TaskID, model.TaskStatusStopped); err != nil {
 		_ = p.Repo.UpdateStatus(t.TaskID, model.TaskStatusFailed)
 		p.writeStopRec(false, err.Error(), t, target)

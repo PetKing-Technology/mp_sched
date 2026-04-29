@@ -61,17 +61,21 @@ Docker Engine 没有「容器最长存活时间」原生开关，运行超时由
 
 | `type` | 行为 |
 |--------|------|
-| `config` 或 `file` 或省略 | 走「配置文件」分支：使用 `config_*` 字段与 `business.env`（`KEY=VALUE` 字符串数组） |
+| `config` 或 `file` 或省略 | 走「配置文件」分支：可选用下面 **OSS 相关** `config_*` 字段，以及 `business.env`（`KEY=VALUE` 字符串数组）等 |
 | `env` | 注入一对环境变量：`env_key` + `env_value`；可与 `business.env` 数组并存（先合并后追加） |
 
-`type=config` 时（在 `business` 内）：
+**`config_*` 与 OSS（对象存储）**：`config_oss_key`、`config_mode`、`config_container_path` **只在与 S3/OSS 等对象存储中的配置文件配合时使用**：`config_oss_key` 是 bucket 内的对象 key（一任务一 key 的约定）；`config_mode` 表示由 **mp-worker** 从 worker 侧已配置的 `docker.oss` 拉取后 **bind 进容器**（`worker`），还是由 **容器内应用** 自行持凭证从 OSS 拉取（`app`）；`config_container_path` 仅在 `config_mode=worker` 时生效（容器内只读挂载路径，省略则用 `docker.config_file_container_path`）。
+
+**无需 OSS 时**：若配置来自**镜像内文件**、**全局** `[[docker.mounts]]` 挂好的**主机本地路径**，或任务**根本不读外部配置文件**，则 **不要填** `config_oss_key` / `config_mode` / `config_container_path`，在 `business` 里只写 `command`、`entrypoint`、`env`、`workdir` 等即可。
+
+`type=config` 时，**仅在使用 OSS 配置**（在 `business` 内）常用字段如下：
 
 | 字段 | 含义 |
 |------|------|
-| `config_oss_key` | 该任务在 OSS 中的对象 key（一 task 一 key） |
-| `config_container_path` | 仅 `config_mode=worker` 时容器内只读挂载绝对路径；省略则用 `docker.config_file_container_path` |
-| `config_mode` | `worker` = mp-worker 下载后 bind（需 `docker.oss`）；`app` = 容器内自拉 |
-| `env` | 字符串数组，作为容器环境变量 |
+| `config_oss_key` | 该任务对应配置文件在 **OSS** 中的对象 key |
+| `config_container_path` | 仅 `config_mode=worker`：容器内只读挂载的绝对路径；省略则用 `docker.config_file_container_path` |
+| `config_mode` | `worker`：mp-worker 从 OSS 下载后 bind（需 `docker.oss`）；`app`：容器内自拉 OSS |
+| `env` | 字符串数组，作为容器环境变量（与是否用 OSS 无关，可任意搭配） |
 
 `type=env` 时（在 `business` 内）：
 
@@ -84,7 +88,7 @@ Docker Engine 没有「容器最长存活时间」原生开关，运行超时由
 
 #### 2.1.3 请求示例
 
-start，`type=config`：
+start，`type=config` 且 **从 OSS 取配置**（示例：`config_mode=app`，由容器内自拉 `config_oss_key`）：
 
 ```json
 {
@@ -101,6 +105,20 @@ start，`type=config`：
     "config_oss_key": "configs/app.yaml",
     "config_mode": "app",
     "command": ["sleep", "60"]
+  }
+}
+```
+
+start，`type=config` 但 **不用 OSS**（配置在镜像内或已由全局 `mounts` 挂入，仅下指令）：
+
+```json
+{
+  "operation": "start",
+  "provider": "docker",
+  "image": "myapp:1.0",
+  "task_class": "fast",
+  "business": {
+    "command": ["./server", "--config", "/etc/myapp/config.yaml"]
   }
 }
 ```
@@ -281,7 +299,18 @@ callback 事件名：
 
 ### 5.4 `GET /api/sched/v1/telemetry/docker-log-lines`
 
-表 `docker_log_lines`：`task_id`、`container_id`、`stream`（`stdout` / `stderr`）、`limit`。
+表 `docker_log_lines`。查询参数：
+
+| 参数 | 说明 |
+|------|------|
+| `task_id` / `container_id` / `stream` | 可选；`stream` 为 `stdout` 或 `stderr` |
+| `limit` | 条数，默认 100，最大 500 |
+| `offset` | 分页偏移，默认 0，最大 10000 |
+| `order` | 默认 **`asc`**（按采集时间正序，早的在前）；`desc` 或 `newest` 为倒序（新的在前） |
+
+**终态补拉与重复行**：启用 `docker_log_terminal_flush_lines`（非 -1）时，worker 在把任务打到终态或停止容器并仍持有 `runtime_ref` 时会再执行一次 Tail 写入。若周期拉日志仍开启，重叠区间的 stderr/stdout 行可能在 `docker_log_lines` 中出现多条内容相同、采集时间不同的记录；查询侧可按 `task_id`+`line` 去重或接受冗余，存储侧未建唯一约束。
+
+**采集侧说明**（与「Tail 不足 500 行就丢吗」）：`docker_log_tail_lines` 的 **Tail 是「最多」行数**，不足 500 会整段拉回；只要在任务仍为 `running` 时至少完成一次成功的 `ContainerLogs` 写入，这些行就会落库。之后容器退出不会把已写入行删掉。**容易丢**的是：从未在 `running` 期间被周期采集扫到（或 `ContainerLogs` 失败），与「第一次是否满 500 行」无关；终态补拉用于缓解「任务太快结束从未被周期扫到」的情况。
 
 ---
 

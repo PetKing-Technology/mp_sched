@@ -167,6 +167,20 @@ type DockerLogLineQuery struct {
 	TaskID      string
 	ContainerID string
 	Stream      string
+	// Offset 分页偏移；仅 docker 日志查询使用，上限 10000。
+	Offset int
+	// OrderDesc false（默认）= 时间正序（早的在前）；true = 时间倒序（新的在前）。
+	OrderDesc bool
+}
+
+func dockerLogOffset(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 10000 {
+		return 10000
+	}
+	return n
 }
 
 // ListDockerLogLines 查容器标准输出/错误日志行。
@@ -196,7 +210,16 @@ func ListDockerLogLines(ctx context.Context, conn driver.Conn, db string, q Dock
 	if len(conds) > 0 {
 		where = strings.Join(conds, " AND ")
 	}
-	sql := fmt.Sprintf(`SELECT toString(ts), task_id, container_id, stream, line FROM %s WHERE %s ORDER BY ts DESC LIMIT %d`, tbl, where, q.limit())
+	order := "ASC"
+	if q.OrderDesc {
+		order = "DESC"
+	}
+	off := dockerLogOffset(q.Offset)
+	lim := q.limit()
+	sql := fmt.Sprintf(
+		`SELECT toString(ts), task_id, container_id, stream, line FROM %s WHERE %s ORDER BY ts %s, stream ASC, line ASC LIMIT %d OFFSET %d`,
+		tbl, where, order, lim, off,
+	)
 	rows, err := conn.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err

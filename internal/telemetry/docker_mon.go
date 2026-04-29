@@ -20,10 +20,116 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	"mp_sched/internal/config"
+	"mp_sched/internal/model"
 	"mp_sched/internal/taskrepo"
 )
 
 const maxLogLineRunes = 65535
+
+const maxTerminalDockerLogTail = 1_000_000
+
+func effectiveTerminalFlushTail(app *config.App) int {
+	if app == nil {
+		return 20000
+	}
+	n := app.Telemetry.DockerLogTerminalFlushLines
+	if n < 0 {
+		return 0
+	}
+	if n == 0 {
+		n = 20000
+	}
+	if n > maxTerminalDockerLogTail {
+		n = maxTerminalDockerLogTail
+	}
+	return n
+}
+
+func dockerLogRowsFromBuffers(taskID, containerID string, ts time.Time, stdout, stderr *bytes.Buffer) []DockerLogLineRow {
+	var rows []DockerLogLineRow
+	appendDockerLogStreamLines(&rows, taskID, containerID, "stdout", stdout, ts)
+	appendDockerLogStreamLines(&rows, taskID, containerID, "stderr", stderr, ts)
+	return rows
+}
+
+func appendDockerLogStreamLines(rows *[]DockerLogLineRow, taskID, containerID, stream string, buf *bytes.Buffer, ts time.Time) {
+	sc := bufio.NewScanner(buf)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := trimLine(sc.Text())
+		if line == "" {
+			continue
+		}
+		*rows = append(*rows, DockerLogLineRow{
+			TS:          ts,
+			TaskID:      taskID,
+			ContainerID: containerID,
+			Stream:      stream,
+			Line:        line,
+		})
+	}
+}
+
+// FinalFlushDockerLogs 在任务已停或终态同步时尽最大努力再拉一次容器日志（仅 Tail）；若仍开启 docker_log_interval_seconds，可能与周期采集写入重复行（无去重）。
+func FinalFlushDockerLogs(ctx context.Context, app *config.App, eng *client.Client, task *model.Task) {
+	if app == nil || !app.ClickHouse.Enable || eng == nil || task == nil {
+		return
+	}
+	if task.Provider != "docker" {
+		return
+	}
+	cid := strings.TrimSpace(task.RuntimeRef)
+	if cid == "" {
+		return
+	}
+	tailN := effectiveTerminalFlushTail(app)
+	if tailN <= 0 {
+		return
+	}
+	conn, err := OpenClickHouse(&app.ClickHouse)
+	if err != nil {
+		slog.Debug("telemetry: terminal log flush: clickhouse", "err", err.Error())
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	db := app.ClickHouse.Database
+	if db == "" {
+		db = "default"
+	}
+	sctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	err = EnsureSchema(sctx, conn, db)
+	cancel()
+	if err != nil {
+		slog.Debug("telemetry: terminal log flush: schema", "err", err.Error())
+		return
+	}
+	cctx, ccancel := context.WithTimeout(ctx, 60*time.Second)
+	defer ccancel()
+	opts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: true,
+		Tail:       strconv.Itoa(tailN),
+	}
+	rc, err := eng.ContainerLogs(cctx, cid, opts)
+	if err != nil {
+		slog.Debug("telemetry: terminal log flush: container logs", "task_id", task.TaskID, "err", err.Error())
+		return
+	}
+	var outBuf, errBuf bytes.Buffer
+	_, _ = stdcopy.StdCopy(&outBuf, &errBuf, rc)
+	_ = rc.Close()
+	now := time.Now().UTC()
+	rows := dockerLogRowsFromBuffers(task.TaskID, cid, now, &outBuf, &errBuf)
+	if len(rows) == 0 {
+		return
+	}
+	ictx, icancel := context.WithTimeout(ctx, 30*time.Second)
+	defer icancel()
+	if err := InsertDockerLogLines(ictx, conn, db, rows); err != nil {
+		slog.Debug("telemetry: terminal log flush: insert", "err", err.Error())
+	}
+}
 
 // StartDockerMonitors 在 worker 上拉取 running 容器的 stats 与日志；需 ClickHouse 已启用。
 func StartDockerMonitors(ctx context.Context, app *config.App, eng *client.Client, repo *taskrepo.Repo) {
@@ -180,25 +286,7 @@ func runLogLoop(ctx context.Context, eng *client.Client, repo *taskrepo.Repo, co
 			sinceMu.Lock()
 			sinceByID[cid] = now
 			sinceMu.Unlock()
-			appendLines := func(stream string, buf *bytes.Buffer) {
-				sc := bufio.NewScanner(buf)
-				sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-				for sc.Scan() {
-					line := trimLine(sc.Text())
-					if line == "" {
-						continue
-					}
-					rows = append(rows, DockerLogLineRow{
-						TS:          now,
-						TaskID:      t.TaskID,
-						ContainerID: cid,
-						Stream:      stream,
-						Line:        line,
-					})
-				}
-			}
-			appendLines("stdout", &outBuf)
-			appendLines("stderr", &errBuf)
+			rows = append(rows, dockerLogRowsFromBuffers(t.TaskID, cid, now, &outBuf, &errBuf)...)
 		}
 		cancel()
 		if len(rows) == 0 {

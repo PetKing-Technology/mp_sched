@@ -171,6 +171,7 @@ GPU 行为补充：
 | `docker_stats_interval_seconds` | worker 采容器 CPU / 内存 间隔（秒），0 = 关闭 |
 | `docker_log_interval_seconds` | worker 拉容器日志间隔（秒），0 = 关闭 |
 | `docker_log_tail_lines` | 首次拉取每容器最近 N 行（之后按时间增量），缺省 500 |
+| `docker_log_terminal_flush_lines` | 任务终态 / 主动 Stop / 孤儿回收 / 运行超时停容器**之前**再 Tail 补拉日志的最大行数；0=默认 20000，上限约 1e6，**-1=关闭**。若与 `docker_log_interval_seconds` 同时开启，同一行可能被写多次（插入时间 `ts` 不同，表内**不去重**） |
 | `log_batch_size` | slog 批写阈值，缺省 200 |
 | `log_batch_flush_ms` | slog 强制刷批间隔（毫秒），缺省 2000 |
 

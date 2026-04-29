@@ -226,7 +226,15 @@ paths:
       parameters:
         - in: query
           name: limit
-          schema: { type: integer }
+          schema: { type: integer, default: 100, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, maximum: 10000 }
+          description: 分页偏移
+        - in: query
+          name: order
+          schema: { type: string, enum: [asc, desc, newest], default: asc }
+          description: asc=时间正序早的在前；desc 或 newest=倒序
         - in: query
           name: task_id
           schema: { type: string }
@@ -283,6 +291,9 @@ components:
         business:
           type: object
           additionalProperties: true
+          description: |
+            不透明 JSON。docker provider 下：type=config 时，config_oss_key / config_mode / config_container_path 仅在与 OSS/S3 对象存储中的配置文件配合时使用；
+            配置若来自镜像内或全局 mounts 的主机本地文件、或无需外部配置文件，则不要填写上述 config_* 字段。
 
     Task:
       type: object

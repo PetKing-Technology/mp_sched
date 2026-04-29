@@ -45,8 +45,10 @@ type Telemetry struct {
 	DockerLogIntervalSeconds int `mapstructure:"docker_log_interval_seconds" yaml:"docker_log_interval_seconds"`
 	// DockerLogTailLines 首次拉取每容器最近 N 行（之后按时间增量）
 	DockerLogTailLines int `mapstructure:"docker_log_tail_lines" yaml:"docker_log_tail_lines"`
-	LogBatchSize       int `mapstructure:"log_batch_size" yaml:"log_batch_size"`
-	LogBatchFlushMS    int `mapstructure:"log_batch_flush_ms" yaml:"log_batch_flush_ms"`
+	// DockerLogTerminalFlushLines 工作负载进入终态时一次性补拉容器日志的最大行数（Tail）。0=内置默认 20000；-1=关闭终态补拉。可能与周期采集重复写入相同行，见文档。
+	DockerLogTerminalFlushLines int `mapstructure:"docker_log_terminal_flush_lines" yaml:"docker_log_terminal_flush_lines"`
+	LogBatchSize                int `mapstructure:"log_batch_size" yaml:"log_batch_size"`
+	LogBatchFlushMS             int `mapstructure:"log_batch_flush_ms" yaml:"log_batch_flush_ms"`
 }
 
 type Server struct {
@@ -195,12 +197,13 @@ func Default() *App {
 			User: DefaultClickHouseUser, Password: DefaultClickHousePassword,
 		},
 		Telemetry: Telemetry{
-			SlogToClickHouse:           false,
-			DockerStatsIntervalSeconds: 0,
-			DockerLogIntervalSeconds:   0,
-			DockerLogTailLines:         500,
-			LogBatchSize:               200,
-			LogBatchFlushMS:            2000,
+			SlogToClickHouse:               false,
+			DockerStatsIntervalSeconds:     0,
+			DockerLogIntervalSeconds:       0,
+			DockerLogTailLines:             500,
+			DockerLogTerminalFlushLines:    20000,
+			LogBatchSize:                   200,
+			LogBatchFlushMS:                2000,
 		},
 		Docker: Docker{Mounts: nil},
 	}

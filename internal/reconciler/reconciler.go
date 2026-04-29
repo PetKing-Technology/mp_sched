@@ -6,11 +6,14 @@ import (
 	"sync"
 	"time"
 
+	dockercli "github.com/docker/docker/client"
+
 	"mp_sched/internal/callback"
 	"mp_sched/internal/config"
 	"mp_sched/internal/model"
 	"mp_sched/internal/provider"
 	"mp_sched/internal/taskrepo"
+	"mp_sched/internal/telemetry"
 )
 
 // Runner 周期性用 Provider.Status 对账，把终态从集群同步回库；可选对「终态+残留 runtime」做孤儿回收
@@ -19,6 +22,8 @@ type Runner struct {
 	Reg  provider.Registry
 	CB   *callback.Client
 	Cfg  *config.Reconciler
+	App  *config.App
+	Eng  *dockercli.Client
 
 	orphanInFlight sync.Map
 }
@@ -52,12 +57,15 @@ func (r *Runner) Tick(ctx context.Context) {
 		switch st.Phase {
 		case provider.PhaseSucceeded:
 			ev = callback.EventSucceeded
+			telemetry.FinalFlushDockerLogs(ctx, r.App, r.Eng, t)
 			_ = r.Repo.UpdateStatus(t.TaskID, model.TaskStatusSucceeded)
 		case provider.PhaseFailed:
 			ev = callback.EventFailed
+			telemetry.FinalFlushDockerLogs(ctx, r.App, r.Eng, t)
 			_ = r.Repo.UpdateStatus(t.TaskID, model.TaskStatusFailed)
 		case provider.PhaseStopped:
 			ev = callback.EventStopped
+			telemetry.FinalFlushDockerLogs(ctx, r.App, r.Eng, t)
 			_ = r.Repo.UpdateStatus(t.TaskID, model.TaskStatusStopped)
 		default:
 		}
@@ -149,6 +157,7 @@ func (r *Runner) reapOrphanGoroutine(ctx context.Context, taskID string) {
 		if err := prov.Stop(ctx, t3); err != nil {
 			slog.Warn("orphan stop", "task_id", t3.TaskID, "err", err.Error())
 		}
+		telemetry.FinalFlushDockerLogs(ctx, r.App, r.Eng, t3)
 		if err := r.Repo.ClearRuntimeRef(t3.TaskID); err != nil {
 			slog.Warn("orphan clear runtime_ref", "task_id", t3.TaskID, "err", err.Error())
 		} else {
