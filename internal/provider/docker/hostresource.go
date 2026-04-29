@@ -11,7 +11,7 @@ import (
 
 // validateTaskHostResources 将 task 的 res_cpu/res_memory 与 [docker.host_resources] 本机上限比对；
 // 若任务需要 GPU，校验 gpu_ids 去重后能解析出合法挂载且 id 均在槽位表中。
-// GPU 多任务并发占用由 pipeline 中 CheckDockerGPUOccupancy 汇总校验。
+// GPU 多任务并发占用由 pipeline 在 admit 事务内 CheckDockerGPUOccupancyWithCandidate 汇总校验。
 // 若 max_cpu、max_memory 均未配置且无 GPU 请求，且不触发 GPU 校验，则可能直接 nil。
 func validateTaskHostResources(t *model.Task, cfg *config.Docker) *provider.ResourceCheckResult {
 	if t == nil || cfg == nil {

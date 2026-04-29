@@ -55,7 +55,7 @@ Docker Engine 没有「容器最长存活时间」原生开关，运行超时由
 - 私有仓库拉取：在 `[docker.image_pull]` 配置 `enable=true` 与 `username` / `token`；`enable=false` 时 pull 不带鉴权。
 - 路径挂载：通过 `[[docker.mounts]]` 全局配置（`host_path` → `mount_path`），不能由任务传参覆盖。
 - 容器 Label：`mp_sched.task_id`、`mp_sched.provider`、`vendor=mova` 等。
-- GPU 槽位（多重集语义）：见 `[docker.host_resources].gpu_ids`，每一项 = 一个槽，同一 device id 重复 = 多槽；任一 id 总占用超过槽位数则任务失败。详见 [`CONFIG.md`](CONFIG.md#92-dockerhost_resources)。
+- GPU 槽位（多重集语义）：见 `[docker.host_resources].gpu_ids`，每一项 = 一个槽，同一 device id 重复 = 多槽；当前占用（含自身）超过槽位时在 **admit 前**拒绝，任务退回 **`pending`** 待下一轮抢占，不会因此直接 `failed`。详见 [`CONFIG.md`](CONFIG.md#92-dockerhost_resources)。
 
 #### 2.1.2 `business.type` 分支
 

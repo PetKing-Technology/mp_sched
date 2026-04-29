@@ -160,6 +160,15 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 		if ok, _ := scheduler.Admit(p.Cfg.Scheduler, tt, counts); !ok {
 			return taskrepo.ErrNotAdmitted
 		}
+		if tt.Provider == "docker" && p.Cfg != nil {
+			occ, e := r2.ListDockerOccupyingGPUTasksWithDB(tx)
+			if e != nil {
+				return e
+			}
+			if err := docker.CheckDockerGPUOccupancyWithCandidate(p.Cfg.Docker.HostResources, occ, tt); err != nil {
+				return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+			}
+		}
 		ok, e := r2.TrySetStatusWithDB(tx, t.TaskID, model.TaskStatusProcessing, model.TaskStatusAdmitted)
 		if e != nil {
 			return e
@@ -177,19 +186,6 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 	t2, err := p.Repo.Get(t.TaskID)
 	if err != nil {
 		return err
-	}
-	if t2.Provider == "docker" && p.Cfg != nil {
-		tasks, err := p.Repo.ListDockerOccupyingGPUTasks()
-		if err != nil {
-			_ = p.Repo.UpdateStatus(t2.TaskID, model.TaskStatusFailed)
-			p.fire(ctx, callback.EventFailed, t2.TaskID)
-			return fmt.Errorf("list docker gpu tasks: %w", err)
-		}
-		if err := docker.CheckDockerGPUOccupancy(p.Cfg.Docker.HostResources, tasks); err != nil {
-			_ = p.Repo.UpdateStatus(t2.TaskID, model.TaskStatusFailed)
-			p.fire(ctx, callback.EventFailed, t2.TaskID)
-			return fmt.Errorf("%w: %s", taskrepo.ErrResourceCheck, err.Error())
-		}
 	}
 	prov, err := p.Reg.Get(t2.Provider)
 	if err != nil {

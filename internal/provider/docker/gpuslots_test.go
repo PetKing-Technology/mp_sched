@@ -55,10 +55,20 @@ func TestCheckDockerGPUOccupancy_TwoSlotsShared(t *testing.T) {
 	}
 }
 
-func TestCheckDockerGPUOccupancy_NoGpuIdsButTaskWantsGPU(t *testing.T) {
-	host := config.DockerHostResources{}
-	tasks := []model.Task{{TaskID: "a", ResGPU: "1"}}
-	if err := CheckDockerGPUOccupancy(host, tasks); err == nil {
-		t.Fatal("expected error")
+func TestCheckDockerGPUOccupancyWithCandidate_ExceedsWhenIncludingPending(t *testing.T) {
+	host := config.DockerHostResources{GPUIDs: []string{"GPU-0"}}
+	occ := []model.Task{{TaskID: "a", ResGPU: "true"}}
+	cand := &model.Task{TaskID: "b", ResGPU: "true"}
+	if err := CheckDockerGPUOccupancyWithCandidate(host, occ, cand); err == nil {
+		t.Fatal("expected exhausted: 2 needs 1 slot")
+	}
+}
+
+func TestCheckDockerGPUOccupancyWithCandidate_Fits(t *testing.T) {
+	host := config.DockerHostResources{GPUIDs: []string{"GPU-0", "GPU-0"}}
+	occ := []model.Task{{TaskID: "a", ResGPU: "true"}}
+	cand := &model.Task{TaskID: "b", ResGPU: "true"}
+	if err := CheckDockerGPUOccupancyWithCandidate(host, occ, cand); err != nil {
+		t.Fatal(err)
 	}
 }

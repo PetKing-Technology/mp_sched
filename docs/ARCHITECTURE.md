@@ -110,10 +110,12 @@ flowchart LR
 1. `ClaimNext`：对最老 `pending` 行加 `FOR UPDATE SKIP LOCKED`，原子改为 `processing`（多 worker 安全）。
 2. `Pipeline.Dispatch`：要求当前已是 `processing`。
 3. `executeStart` 顺序（见 `pipeline.go`）：
-   - 事务内：`RunningSlotCountsWithDB` → `scheduler.Admit` → 通过则 CAS `processing` → `admitted`。
-   - 若 `Admit` 拒绝：返回 `ErrNotAdmitted`；worker 不改状态，外层 `ResetToPending` 退回 `pending`，构成调度反压。
+   - 事务内：`RunningSlotCountsWithDB` → `scheduler.Admit`。
+   - 若 `provider=docker`：在同一事务内再 `ListDockerOccupyingGPUTasksWithDB` + `docker.CheckDockerGPUOccupancyWithCandidate`（把当前待 admit 任务叠加上），超 GPU 槽位则与 `Admit` 拒绝一样返回 `ErrNotAdmitted`，worker `ResetToPending` 后进下一轮抢占。
+   - 通过上述检查后 CAS `processing` → `admitted`。
+   - 若仅 `Admit`（非 GPU）拒绝：返回 `ErrNotAdmitted`；worker `ResetToPending`。
    - 事务成功后：`callback.EventAdmitted`。
-   - 事务外：当 `provider=docker` 且配置了 `host_resources.gpu_ids` 时，先 `docker.CheckDockerGPUOccupancy`（见第 5 节）；再 `Registry.Get` → `ResourceCheck`（CPU / 内存上限、daemon、business 等）；任一失败则 `failed`。
+   - 事务外：`Registry.Get` → `ResourceCheck`（CPU / 内存上限、daemon、business 等）；失败则 `failed`。
    - `Run` 成功：`UpdateRuntime(..., running, runtime_ref)` 同时写 `running_at`，触发 `callback.EventRunning`。
 
 ### 4.3 `Admit` 规则
@@ -125,20 +127,20 @@ flowchart LR
 | `task_class=slow` 且接纳后剩余空槽 < `MinFreeSlotsForFast` | `fast_slots_reserved` |
 | `operation=stop` | 不占 start 槽，直接 ok |
 
-`Admit` 不解析 `res_cpu` / `res_memory` 数值；粗粒度资源由后续 `CheckDockerGPUOccupancy`、`ResourceCheck` 与 Provider 实现决定。
+`Admit` 与 GPU 槽位预检均不解析 `res_cpu` / `res_memory` 数值；粗粒度数值资源由 `ResourceCheck` 与 Provider 实现决定。
 
 ---
 
 ## 5. GPU 槽位（多重集语义）
 
-代码：`internal/provider/docker/gpuslots.go`，在 `pipeline.executeStart` 的「事务外」阶段被调用。
+代码：`internal/provider/docker/gpuslots.go`，在 `pipeline.executeStart` **事务内**、`Admit` 通过之后、`CAS admitted` 之前调用：对已 `admitted|running` 的占用 **加上本任务** 做 `CheckDockerGPUOccupancyWithCandidate`；超容量则返回 `ErrNotAdmitted`（与全局槽满相同，worker 退回 `pending` 重试）。
 
 - `host_resources.gpu_ids`：**唯一 GPU 配置**。多重集定义各 device id 的**并发槽数**；任务需要 GPU 时，对该列表**按首次出现顺序去重**得到写入容器的 device id。
 - 任务字段 `res_gpu`：仅 **`1` / `true` / `yes` / `on`**（不区分大小写）表示需要 GPU；不在请求中传具体 device id。
 - 单任务占用槽数 = 去重后的每个 device id **各 1**（同一任务对同一物理卡只计一槽；多卡则每卡各 1）。
-- 校验：汇总当前所有 `provider=docker` 且 `status IN (admitted, running)` 的 start 任务；任一 id 总占用 > 槽位数 → 任务失败。
+- 校验：汇总当前所有 `provider=docker` 且 `status IN (admitted, running)` 的 start 任务，**再计入当前 processing 任务**；任一 id 总占用 > 槽位数 → **不进入 `admitted`，退回 `pending`**（非 `failed`）。
 - 剩余槽位（旁路读取）：`docker.RemainingGPUSlots(hostCap, used)`。
-- 未配置 `gpu_ids` 时：若无任务需要 GPU则跳过校验；**若存在需要 GPU 的任务**则会失败（须配置槽位表与挂载 id）。
+- 未配置 `gpu_ids` 时：若无人需要 GPU 则跳过；若有任务 `res_gpu` 为开则报错并经 `ErrNotAdmitted` 退回 `pending`（须在配置中声明 `gpu_ids`）。
 
 向 Docker 下发：`DeviceRequests.device_ids` 由上述配置解析，可含重复 id。
 
@@ -167,7 +169,7 @@ Docker Engine 没有「容器最长存活时间」原生开关，只能由调度
 
 | 方法 | 调用时机 |
 |------|----------|
-| `ResourceCheck` | `admitted` 之后、`Run` 之前。docker 侧：daemon ping、镜像非空、`business` 解析、CPU / 内存上限。GPU 槽位不在这里。 |
+| `ResourceCheck` | `admitted` 之后、`Run` 之前。docker 侧：daemon ping、镜像非空、`business` 解析、CPU / 内存上限。GPU 槽位已在事务内预检，不在此处。 |
 | `Run` | 创建并启动工作负载；返回 `runtime_ref`（如容器 ID） |
 | `Status` | reconciler 周期调用，同步终态 |
 | `Stop` | stop 任务、orphan 回收、运行超时扫描共用入口 |
