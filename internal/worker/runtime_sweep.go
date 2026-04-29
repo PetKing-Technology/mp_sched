@@ -10,6 +10,7 @@ import (
 	"mp_sched/internal/model"
 	"mp_sched/internal/pipeline"
 	"mp_sched/internal/taskrepo"
+	"mp_sched/internal/telemetry"
 )
 
 // StartRuntimeTimeoutSweeper 周期性扫描 running 任务，超过 max_runtime 则 Stop、标 failed、callback.EventTimeout
@@ -80,6 +81,7 @@ func sweepRuntimeTimeouts(ctx context.Context, cfg *config.App, pl *pipeline.Pip
 		if err := prov.Stop(ctx, t); err != nil {
 			slog.Warn("runtime sweeper stop", "task_id", t.TaskID, "err", err.Error())
 		}
+		telemetry.FinalFlushDockerLogs(ctx, cfg, pl.DockerEng, t)
 		_ = repo.ClearRuntimeRef(t.TaskID)
 		if err := repo.UpdateStatus(t.TaskID, model.TaskStatusFailed); err != nil {
 			slog.Warn("runtime sweeper status", "task_id", t.TaskID, "err", err.Error())

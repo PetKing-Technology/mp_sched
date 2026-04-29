@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	dockercli "github.com/docker/docker/client"
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -18,6 +19,7 @@ import (
 	"mp_sched/internal/recordrepo"
 	"mp_sched/internal/scheduler"
 	"mp_sched/internal/taskrepo"
+	"mp_sched/internal/telemetry"
 )
 
 // Pipeline 调度执行链；由 worker 在任务置为 processing 后调用 Dispatch
@@ -27,6 +29,8 @@ type Pipeline struct {
 	Reg  provider.Registry
 	Rec  *recordrepo.Repo
 	CB   *callback.Client
+	// DockerEng 可选；用于终态前补拉容器日志写入 ClickHouse
+	DockerEng *dockercli.Client
 }
 
 // SubmitInput 与 controller HTTP 入参一致
@@ -156,6 +160,15 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 		if ok, _ := scheduler.Admit(p.Cfg.Scheduler, tt, counts); !ok {
 			return taskrepo.ErrNotAdmitted
 		}
+		if tt.Provider == "docker" && p.Cfg != nil {
+			occ, e := r2.ListDockerOccupyingGPUTasksWithDB(tx)
+			if e != nil {
+				return e
+			}
+			if err := docker.CheckDockerGPUOccupancyWithCandidate(p.Cfg.Docker.HostResources, occ, tt); err != nil {
+				return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+			}
+		}
 		ok, e := r2.TrySetStatusWithDB(tx, t.TaskID, model.TaskStatusProcessing, model.TaskStatusAdmitted)
 		if e != nil {
 			return e
@@ -173,19 +186,6 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 	t2, err := p.Repo.Get(t.TaskID)
 	if err != nil {
 		return err
-	}
-	if t2.Provider == "docker" && p.Cfg != nil {
-		tasks, err := p.Repo.ListDockerOccupyingGPUTasks()
-		if err != nil {
-			_ = p.Repo.UpdateStatus(t2.TaskID, model.TaskStatusFailed)
-			p.fire(ctx, callback.EventFailed, t2.TaskID)
-			return fmt.Errorf("list docker gpu tasks: %w", err)
-		}
-		if err := docker.CheckDockerGPUOccupancy(p.Cfg.Docker.HostResources, tasks); err != nil {
-			_ = p.Repo.UpdateStatus(t2.TaskID, model.TaskStatusFailed)
-			p.fire(ctx, callback.EventFailed, t2.TaskID)
-			return fmt.Errorf("%w: %s", taskrepo.ErrResourceCheck, err.Error())
-		}
 	}
 	prov, err := p.Reg.Get(t2.Provider)
 	if err != nil {
@@ -266,6 +266,7 @@ func (p *Pipeline) executeStop(ctx context.Context, t *model.Task) error {
 		p.fire(ctx, callback.EventFailed, t.TaskID)
 		return fmt.Errorf("stop: %w", err)
 	}
+	telemetry.FinalFlushDockerLogs(ctx, p.Cfg, p.DockerEng, target)
 	if err := p.Repo.UpdateStatus(target.TaskID, model.TaskStatusStopped); err != nil {
 		_ = p.Repo.UpdateStatus(t.TaskID, model.TaskStatusFailed)
 		p.writeStopRec(false, err.Error(), t, target)

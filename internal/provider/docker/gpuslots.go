@@ -158,3 +158,14 @@ func CheckDockerGPUOccupancy(hr config.DockerHostResources, tasks []model.Task) 
 	}
 	return ValidateGPUUsedWithinHostCapacity(hostCap, used)
 }
+
+// CheckDockerGPUOccupancyWithCandidate 在 occupying 之上再计入若 candidate 被 admit 后的 GPU 占用（candidate 通常为尚处于 processing 的本人）。
+func CheckDockerGPUOccupancyWithCandidate(hr config.DockerHostResources, occupying []model.Task, candidate *model.Task) error {
+	if candidate == nil {
+		return CheckDockerGPUOccupancy(hr, occupying)
+	}
+	combined := make([]model.Task, len(occupying)+1)
+	copy(combined, occupying)
+	combined[len(occupying)] = *candidate
+	return CheckDockerGPUOccupancy(hr, combined)
+}

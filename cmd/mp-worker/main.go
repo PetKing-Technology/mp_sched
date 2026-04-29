@@ -62,13 +62,13 @@ func main() {
 	repo := &taskrepo.Repo{DB: db}
 	rec := &recordrepo.Repo{DB: db}
 	cb := callback.New(&cfg.Callback)
-	pl := &pipeline.Pipeline{Cfg: cfg, Repo: repo, Reg: reg, Rec: rec, CB: cb}
+	pl := &pipeline.Pipeline{Cfg: cfg, Repo: repo, Reg: reg, Rec: rec, CB: cb, DockerEng: dck.Engine()}
 
 	telemetry.StartDockerMonitors(ctx, cfg, dck.Engine(), repo)
 
 	if cfg.Reconciler.Enable || cfg.Reconciler.OrphanReapEnable {
 		intv := time.Duration(cfg.Reconciler.IntervalSeconds) * time.Second
-		run := &reconciler.Runner{Repo: repo, Reg: reg, CB: cb, Cfg: &cfg.Reconciler}
+		run := &reconciler.Runner{Repo: repo, Reg: reg, CB: cb, Cfg: &cfg.Reconciler, App: cfg, Eng: dck.Engine()}
 		go run.RunLoop(ctx, intv)
 		slog.Info("reconciler", "interval", intv.String(), "status_tick", cfg.Reconciler.Enable, "orphan_reap", cfg.Reconciler.OrphanReapEnable)
 	}

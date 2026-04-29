@@ -65,8 +65,16 @@ func (r *Repo) ListDockerOccupyingGPUTasks() ([]model.Task, error) {
 	if r == nil || r.DB == nil {
 		return nil, errors.New("taskrepo: nil db")
 	}
+	return r.ListDockerOccupyingGPUTasksWithDB(r.DB)
+}
+
+// ListDockerOccupyingGPUTasksWithDB 事务内版本；候选任务自身尚为 processing 时不会出现在结果中
+func (r *Repo) ListDockerOccupyingGPUTasksWithDB(db *gorm.DB) ([]model.Task, error) {
+	if db == nil {
+		return nil, errors.New("taskrepo: nil db")
+	}
 	var out []model.Task
-	err := r.DB.
+	err := db.
 		Where("provider = ?", "docker").
 		Where("status IN ?", SlotStatuses).
 		Where(opIsStart(), model.OperationStop).

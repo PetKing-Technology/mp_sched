@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -46,6 +47,26 @@ func parseLimit(q string) int {
 		return 500
 	}
 	return n
+}
+
+func parseLogOffset(q string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(q))
+	if n < 0 {
+		return 0
+	}
+	if n > 10000 {
+		return 10000
+	}
+	return n
+}
+
+func parseOrderDesc(q string) bool {
+	switch strings.ToLower(strings.TrimSpace(q)) {
+	case "desc", "newest":
+		return true
+	default:
+		return false
+	}
 }
 
 // GET /api/sched/v1/telemetry/scheduler-logs
@@ -129,10 +150,15 @@ func (s *Server) getDockerLogLines(w http.ResponseWriter, r *http.Request) {
 		TaskID:      r.URL.Query().Get("task_id"),
 		ContainerID: r.URL.Query().Get("container_id"),
 		Stream:      r.URL.Query().Get("stream"),
+		Offset:      parseLogOffset(r.URL.Query().Get("offset")),
+		OrderDesc:   parseOrderDesc(r.URL.Query().Get("order")),
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
+	}
+	if rows == nil {
+		rows = []telemetry.DockerLogLineView{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "items": rows})
 }

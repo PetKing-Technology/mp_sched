@@ -116,7 +116,7 @@ go run ./cmd/mp-worker     -config configs/development.yaml
 
 ### 9.2 `docker.host_resources`
 
-CPU / 内存通过 `Provider.ResourceCheck` 比对；GPU 槽位在 pipeline 中由 `docker.CheckDockerGPUOccupancy` 比对（聚合所有 `provider=docker` 且 `status IN (admitted, running)` 的 start 任务）。
+CPU / 内存通过 `Provider.ResourceCheck` 比对；GPU 槽位在 `executeStart` **事务内**由 `docker.CheckDockerGPUOccupancyWithCandidate` 比对（已 `admitted|running` 的 docker start 任务 **加上** 当前待 admit 任务）。超槽位时返回 `ErrNotAdmitted`，任务保持/退回 `pending`，与全局并发满一致。
 
 | 键 | 含义 |
 |----|------|
@@ -128,7 +128,7 @@ GPU 行为补充：
 
 - 任务字段 `res_gpu`：开 — **`1` / `true` / `yes` / `on`**（不区分大小写）；其余均为关。
 - 单任务槽位占用 = 去重后的每个 distinct id **各计 1**（同一任务不会在单一 id 上因 `gpu_ids` 重复而多占槽；`gpu_ids` 的重复只抬高**并发路数**上限）。
-- 任一 id 总占用 > 槽位数时本任务 `failed`（错误语义同 `ResourceCheck` 类失败）。
+- 任一 id 总占用 > 槽位数时：在 admit **事务内**拒绝，**退回 `pending`**，下一轮 `ClaimNext` 可再试（与 `scheduler.Admit` 反压一致）；不会仅因 GPU 满而标 `failed`。
 - 旁路读取剩余槽位：`docker.RemainingGPUSlots(hostCap, used)`。
 
 ### 9.3 `docker.mounts`
@@ -171,6 +171,7 @@ GPU 行为补充：
 | `docker_stats_interval_seconds` | worker 采容器 CPU / 内存 间隔（秒），0 = 关闭 |
 | `docker_log_interval_seconds` | worker 拉容器日志间隔（秒），0 = 关闭 |
 | `docker_log_tail_lines` | 首次拉取每容器最近 N 行（之后按时间增量），缺省 500 |
+| `docker_log_terminal_flush_lines` | 任务终态 / 主动 Stop / 孤儿回收 / 运行超时停容器**之前**再 Tail 补拉日志的最大行数；0=默认 20000，上限约 1e6，**-1=关闭**。若与 `docker_log_interval_seconds` 同时开启，同一行可能被写多次（插入时间 `ts` 不同，表内**不去重**） |
 | `log_batch_size` | slog 批写阈值，缺省 200 |
 | `log_batch_flush_ms` | slog 强制刷批间隔（毫秒），缺省 2000 |
 
