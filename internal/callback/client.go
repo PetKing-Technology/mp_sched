@@ -96,7 +96,7 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 }
 
 func (c *Client) addArtifactBinding(body map[string]any, event string, task *model.Task) {
-	if event != EventSucceeded || c.cfg.Auth.ArtifactRoot == "" {
+	if event != EventSucceeded {
 		return
 	}
 	binding, err := collectSequenceBundle(c.cfg.Auth.ArtifactRoot, task)

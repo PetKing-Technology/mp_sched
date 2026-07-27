@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,10 @@ import (
 
 var opaqueRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 var errNoControlledBinding = errors.New("callback artifact: no controlled binding")
+
+// maxSequenceBundleBytes bounds callback-side memory use. The Runtime contract
+// is deliberately a compact manifest, not an unbounded result transport.
+const maxSequenceBundleBytes int64 = 8 << 20
 
 type sequenceBundleBinding struct {
 	RunID          string
@@ -81,9 +86,17 @@ func collectSequenceBundle(root string, task *model.Task) (sequenceBundleBinding
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return sequenceBundleBinding{}, errors.New("callback artifact: bundle is not a regular file")
 	}
-	body, err := os.ReadFile(artifact)
+	file, err := os.Open(artifact)
 	if err != nil {
 		return sequenceBundleBinding{}, fmt.Errorf("callback artifact: read bundle: %w", err)
+	}
+	defer file.Close()
+	body, err := io.ReadAll(io.LimitReader(file, maxSequenceBundleBytes+1))
+	if err != nil {
+		return sequenceBundleBinding{}, fmt.Errorf("callback artifact: read bundle: %w", err)
+	}
+	if int64(len(body)) > maxSequenceBundleBytes {
+		return sequenceBundleBinding{}, errors.New("callback artifact: bundle exceeds maximum size")
 	}
 	if err := validateSequenceBundle(body); err != nil {
 		return sequenceBundleBinding{}, err
