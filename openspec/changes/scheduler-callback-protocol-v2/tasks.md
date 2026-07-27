@@ -18,7 +18,7 @@
 
 - [x] 3.1 Add verification tests for signature tampering, header conflict,
   distinct delivery ids, timestamp shape, and legacy callback regression.
-- [ ] 3.2 Document v2 configuration and wire contract without adding secrets
+- [x] 3.2 Document v2 configuration and wire contract without adding secrets
   to example configs.
 - [ ] 3.3 Run focused and broader scheduler tests in the approved remote test
   environment; freeze a clean candidate and audit the protocol.
