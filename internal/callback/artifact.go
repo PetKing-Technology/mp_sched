@@ -58,7 +58,11 @@ func collectSequenceBundle(root string, task *model.Task) (sequenceBundleBinding
 	if err != nil {
 		return sequenceBundleBinding{}, fmt.Errorf("callback artifact: root: %w", err)
 	}
-	output := filepath.Join(rootPath, runID, "output")
+	runRoot := filepath.Join(rootPath, runID)
+	if err := requireDirectory(runRoot); err != nil {
+		return sequenceBundleBinding{}, err
+	}
+	output := filepath.Join(runRoot, "output")
 	if err := requireDirectory(output); err != nil {
 		return sequenceBundleBinding{}, err
 	}
