@@ -1,10 +1,10 @@
 ## 1. Protocol and configuration
 
-- [ ] 1.1 Add RED tests that freeze legacy callback body/header behavior and
+- [x] 1.1 Add RED tests that freeze legacy callback body/header behavior and
   reject partial v2 auth configuration.
-- [ ] 1.2 Add opt-in v2 callback auth configuration and validation without
+- [x] 1.2 Add opt-in v2 callback auth configuration and validation without
   logging or exposing the HMAC secret.
-- [ ] 1.3 Implement canonical v2 envelope, delivery metadata, exact-body
+- [x] 1.3 Implement canonical v2 envelope, delivery metadata, exact-body
   digest, reserved headers, and HMAC signer.
 
 ## 2. Artifact binding

@@ -27,13 +27,13 @@ const (
 	EventStopped    = "stopped"
 	EventTimeout    = "timeout"
 
-	protocolVersion       = "mp_sched_callback/v2"
-	headerVersion         = "X-MP-Sched-Callback-Version"
-	headerKeyID           = "X-MP-Sched-Key-Id"
-	headerDeliveryID      = "X-MP-Sched-Delivery-Id"
-	headerOccurredAt      = "X-MP-Sched-Occurred-At"
-	headerContentSHA256   = "X-MP-Sched-Content-SHA256"
-	headerSignature       = "X-MP-Sched-Signature"
+	protocolVersion     = "mp_sched_callback/v2"
+	headerVersion       = "X-MP-Sched-Callback-Version"
+	headerKeyID         = "X-MP-Sched-Key-Id"
+	headerDeliveryID    = "X-MP-Sched-Delivery-Id"
+	headerOccurredAt    = "X-MP-Sched-Occurred-At"
+	headerContentSHA256 = "X-MP-Sched-Content-SHA256"
+	headerSignature     = "X-MP-Sched-Signature"
 )
 
 // Client sends scheduler task-state callbacks to the configured application.
