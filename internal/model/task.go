@@ -77,3 +77,24 @@ type Task struct {
 }
 
 func (Task) TableName() string { return "tasks" }
+
+// CallbackDelivery is an authenticated terminal callback outbox row. It keeps
+// the exact already-signed transport bytes so retries never mint a new receipt.
+// It deliberately stores neither the HMAC secret nor Runtime routing data.
+type CallbackDelivery struct {
+	DeliveryID string `gorm:"type:text;primaryKey"`
+	TaskID     string `gorm:"type:text;not null;uniqueIndex:idx_callback_delivery_task_event"`
+	Event      string `gorm:"type:text;not null;uniqueIndex:idx_callback_delivery_task_event"`
+	Method     string `gorm:"type:text;not null"`
+	URL        string `gorm:"type:text;not null"`
+	Body       datatypes.JSON `gorm:"type:jsonb;not null"`
+	Headers    datatypes.JSON `gorm:"type:jsonb;not null"`
+	Status     string `gorm:"type:text;not null;index"`
+	Attempts   int    `gorm:"not null;default:0"`
+	NextAttemptAt time.Time `gorm:"not null;index"`
+	DeliveredAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (CallbackDelivery) TableName() string { return "callback_deliveries" }
