@@ -16,9 +16,9 @@
 
 ## 3. Regression and documentation
 
-- [ ] 3.1 Add RED tests for durable terminal outbox, same-receipt retry,
+- [x] 3.1 Add database-backed verification tests for durable terminal outbox, same-receipt retry,
   non-2xx/no-response retention, and restart drain.
-- [ ] 3.2 Implement authenticated terminal outbox, explicit ACK handling,
+- [x] 3.2 Implement authenticated terminal outbox, explicit ACK handling,
   bounded retry scheduling, and startup drain.
 - [x] 3.3 Add verification tests for signature tampering, header conflict,
   distinct delivery ids, timestamp shape, and legacy callback regression.
