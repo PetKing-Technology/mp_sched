@@ -127,7 +127,15 @@ func (c *Client) enqueue(ctx context.Context, event, taskID string, req *http.Re
 	if err := c.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "event"}}, DoNothing: true}).Create(&row).Error; err != nil { return }
 	if c.db.WithContext(ctx).Where("task_id = ? AND event = ?", taskID, event).First(&row).Error != nil { return }
 	if row.Status != "pending" { return }
-	c.deliver(ctx, &row)
+	if c.claim(ctx, &row) { c.deliver(ctx, &row) }
+}
+
+func (c *Client) claim(ctx context.Context, row *model.CallbackDelivery) bool {
+	now := time.Now().UTC()
+	result := c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).
+		Where("delivery_id = ? AND status = ? AND next_attempt_at <= ?", row.DeliveryID, "pending", now).
+		Updates(map[string]any{"status": "delivering", "next_attempt_at": now.Add(30 * time.Second)})
+	return result.Error == nil && result.RowsAffected == 1
 }
 
 func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
@@ -137,9 +145,9 @@ func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
 	if err != nil { return }
 	req.Header = headers
 	now := time.Now().UTC()
-	updates := map[string]any{"attempts": row.Attempts + 1, "next_attempt_at": now.Add(5 * time.Second)}
+	updates := map[string]any{"attempts": row.Attempts + 1, "status": "pending", "next_attempt_at": now.Add(5 * time.Second)}
 	if c.send(ctx, req) { updates["status"] = "delivered"; updates["delivered_at"] = now }
-	_ = c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).Where("delivery_id = ?", row.DeliveryID).Updates(updates).Error
+	_ = c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).Where("delivery_id = ? AND status = ?", row.DeliveryID, "delivering").Updates(updates).Error
 }
 
 // Drain retries exact persisted authenticated terminal deliveries after restart.
@@ -147,7 +155,7 @@ func (c *Client) Drain(ctx context.Context) {
 	if c == nil || c.db == nil || c.cfg == nil || !c.cfg.Auth.Enabled() { return }
 	var rows []model.CallbackDelivery
 	if c.db.WithContext(ctx).Where("status = ? AND next_attempt_at <= ?", "pending", time.Now().UTC()).Limit(100).Find(&rows).Error != nil { return }
-	for i := range rows { c.deliver(ctx, &rows[i]) }
+	for i := range rows { if c.claim(ctx, &rows[i]) { c.deliver(ctx, &rows[i]) } }
 }
 
 func (c *Client) RunLoop(ctx context.Context, interval time.Duration) {
