@@ -1,0 +1,15 @@
+{
+  "change": "scheduler-callback-protocol-v2",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "8ca4b4efa09ee6d672e7f1768bbe85086e733e53cd326300cb2ba50550e191fd",
+  "files": [
+    { "path": "openspec/changes/scheduler-callback-protocol-v2/proposal.md", "sha256": "5c4488bcbcedb55e484cd0d4d7b75eff52fa76855775ad438f612894d39ee2c7" },
+    { "path": "openspec/changes/scheduler-callback-protocol-v2/design.md", "sha256": "d3f863377fcf70ee742ca1be2aa47ce50c7f899962031dfba452cccaa86f2fa8" },
+    { "path": "openspec/changes/scheduler-callback-protocol-v2/tasks.md", "sha256": "e44ceddcce9cb949b0c701ed3022228724e12d5b2db8d05465a1d155a28d40e5" },
+    { "path": "openspec/changes/scheduler-callback-protocol-v2/specs/authenticated-callback-delivery/spec.md", "sha256": "56eb6aa20284d2118ef4eb2c150cc55e8688ba070b46dd554634aa90e82087b4" },
+    { "path": "openspec/changes/scheduler-callback-protocol-v2/specs/callback-artifact-binding/spec.md", "sha256": "e96cd5c71ff15896ea262474dbc737e86ff18ce9f5b76ee457d6f52eb1a1b63c" }
+  ]
+}
