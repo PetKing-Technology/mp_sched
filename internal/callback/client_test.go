@@ -1,0 +1,142 @@
+package callback
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"mp_sched/internal/config"
+	"mp_sched/internal/model"
+)
+
+type capturedRequest struct {
+	header http.Header
+	body   []byte
+}
+
+func captureServer(t *testing.T) (*httptest.Server, func() capturedRequest) {
+	t.Helper()
+	var mu sync.Mutex
+	var got capturedRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read callback: %v", err)
+		}
+		mu.Lock()
+		got = capturedRequest{header: r.Header.Clone(), body: body}
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	return srv, func() capturedRequest {
+		mu.Lock()
+		defer mu.Unlock()
+		return got
+	}
+}
+
+func testTask() *model.Task {
+	return &model.Task{
+		TaskID: "scheduler-job-1", TaskClass: model.TaskClassFast,
+		Provider: "docker", Operation: model.OperationStart,
+		Status: model.TaskStatusSucceeded,
+	}
+}
+
+func TestFireWithoutAuthKeepsLegacyBodyAndHeaders(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{
+		Enable: true, URL: srv.URL, Method: http.MethodPost,
+		Headers: map[string]string{"X-Legacy": "present"},
+	})
+	c.Fire(t.Context(), EventSucceeded, testTask())
+	got := captured()
+	if got.header.Get("X-Legacy") != "present" {
+		t.Fatalf("legacy header = %q", got.header.Get("X-Legacy"))
+	}
+	for _, name := range []string{
+		"X-MP-Sched-Callback-Version", "X-MP-Sched-Key-Id",
+		"X-MP-Sched-Delivery-Id", "X-MP-Sched-Signature",
+	} {
+		if got.header.Get(name) != "" {
+			t.Fatalf("legacy callback unexpectedly added %s", name)
+		}
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(got.body, &payload); err != nil {
+		t.Fatalf("legacy JSON: %v", err)
+	}
+	if len(payload) != 4 || payload["event"] != EventSucceeded || payload["status"] != model.TaskStatusSucceeded || payload["task_id"] != "scheduler-job-1" {
+		t.Fatalf("legacy payload changed: %s", got.body)
+	}
+}
+
+func TestV2DeliverySignsExactBodyAndUsesFreshReceipt(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{
+		Enable: true, URL: srv.URL,
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"},
+	})
+	c.Fire(t.Context(), EventFailed, testTask())
+	first := captured()
+	c.Fire(t.Context(), EventFailed, testTask())
+	second := captured()
+	for _, got := range []capturedRequest{first, second} {
+		if got.header.Get("X-MP-Sched-Callback-Version") != "2" {
+			t.Fatalf("version = %q", got.header.Get("X-MP-Sched-Callback-Version"))
+		}
+		if got.header.Get("X-MP-Sched-Key-Id") != "fixture-k1" {
+			t.Fatalf("key id = %q", got.header.Get("X-MP-Sched-Key-Id"))
+		}
+		if !strings.HasPrefix(got.header.Get("X-MP-Sched-Occurred-At"), "20") {
+			t.Fatalf("occurred-at = %q", got.header.Get("X-MP-Sched-Occurred-At"))
+		}
+		if _, err := time.Parse(time.RFC3339Nano, got.header.Get("X-MP-Sched-Occurred-At")); err != nil {
+			t.Fatalf("occurred-at: %v", err)
+		}
+		bodyHash := sha256.Sum256(got.body)
+		if got.header.Get("X-MP-Sched-Content-SHA256") != hex.EncodeToString(bodyHash[:]) {
+			t.Fatalf("body digest does not match exact body")
+		}
+		expected := testSignature("fixture-secret", got.header.Get("X-MP-Sched-Key-Id"), got.header.Get("X-MP-Sched-Delivery-Id"), got.header.Get("X-MP-Sched-Occurred-At"), got.header.Get("X-MP-Sched-Content-SHA256"))
+		if !hmac.Equal([]byte(expected), []byte(got.header.Get("X-MP-Sched-Signature"))) {
+			t.Fatalf("signature does not verify exact body")
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(got.body, &payload); err != nil {
+			t.Fatalf("v2 JSON: %v", err)
+		}
+		if payload["protocol_version"] != "mp_sched_callback/v2" || payload["delivery_id"] != got.header.Get("X-MP-Sched-Delivery-Id") || payload["occurred_at"] != got.header.Get("X-MP-Sched-Occurred-At") {
+			t.Fatalf("body/header authority mismatch: %s", got.body)
+		}
+	}
+	if first.header.Get("X-MP-Sched-Delivery-Id") == second.header.Get("X-MP-Sched-Delivery-Id") {
+		t.Fatal("two delivery attempts reused the same delivery id")
+	}
+}
+
+func testSignature(secret, keyID, deliveryID, occurredAt, bodySHA string) string {
+	canonical := "mp_sched_callback_v2\n" +
+		lengthField(keyID) + "\n" +
+		lengthField(deliveryID) + "\n" +
+		lengthField(occurredAt) + "\n" +
+		lengthField(bodySHA) + "\n"
+	h := hmac.New(sha256.New, []byte(secret))
+	_, _ = h.Write([]byte(canonical))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func lengthField(value string) string {
+	return strconv.Itoa(len(value)) + ":" + value
+}
