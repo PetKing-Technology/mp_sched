@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"mp_sched/internal/api"
 	"mp_sched/internal/callback"
