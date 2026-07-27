@@ -156,3 +156,33 @@ func TestV2NonSuccessDoesNotClaimArtifactDigest(t *testing.T) {
 		t.Fatalf("non-success claimed artifact error: %#v", payload)
 	}
 }
+
+func TestV2ControlledSuccessWithoutArtifactRootReturnsBoundedError(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{Enable: true, URL: srv.URL,
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"}})
+	task := controlledTask("run_10")
+	task.TaskID, task.Status = "scheduler-job-10", model.TaskStatusSucceeded
+	c.Fire(t.Context(), EventSucceeded, task)
+	var payload map[string]any
+	if err := json.Unmarshal(captured().body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["artifact_manifest_digest"]; ok {
+		t.Fatalf("missing root claimed digest: %#v", payload)
+	}
+	if payload["artifact_binding_error"] != "unavailable" {
+		t.Fatalf("bounded error = %#v", payload["artifact_binding_error"])
+	}
+}
+
+func TestCollectSequenceBundleRejectsOversizedFile(t *testing.T) {
+	root := t.TempDir()
+	body := append([]byte(`{"sequence_bundle": {"padding":"`), make([]byte, maxSequenceBundleBytes)...)
+	body = append(body, []byte(`"}}`)...)
+	writeBundle(t, root, "run_11", body)
+	if _, err := collectSequenceBundle(root, controlledTask("run_11")); err == nil {
+		t.Fatal("oversized bundle unexpectedly accepted")
+	}
+}
