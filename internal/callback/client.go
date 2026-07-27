@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -70,6 +71,7 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 		body["protocol_version"] = protocolVersion
 		body["delivery_id"] = meta.DeliveryID
 		body["occurred_at"] = meta.OccurredAt
+		c.addArtifactBinding(body, event, t)
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -91,6 +93,23 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 		}
 	}
 	_, _ = c.hc.Do(req)
+}
+
+func (c *Client) addArtifactBinding(body map[string]any, event string, task *model.Task) {
+	if event != EventSucceeded || c.cfg.Auth.ArtifactRoot == "" {
+		return
+	}
+	binding, err := collectSequenceBundle(c.cfg.Auth.ArtifactRoot, task)
+	if err == nil {
+		body["artifact_binding"] = map[string]string{
+			"mode": "scheduler_digest/v1", "contract": binding.Contract, "run_id": binding.RunID,
+		}
+		body["artifact_manifest_digest"] = binding.ManifestDigest
+		return
+	}
+	if !errors.Is(err, errNoControlledBinding) {
+		body["artifact_binding_error"] = "unavailable"
+	}
 }
 
 func (c *Client) allows(event string) bool {

@@ -15,6 +15,7 @@ import (
 )
 
 var opaqueRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+var errNoControlledBinding = errors.New("callback artifact: no controlled binding")
 
 type sequenceBundleBinding struct {
 	RunID          string
@@ -43,10 +44,14 @@ func collectSequenceBundle(root string, task *model.Task) (sequenceBundleBinding
 		return sequenceBundleBinding{}, fmt.Errorf("callback artifact: binding JSON: %w", err)
 	}
 	runID := business.AgentRT.ControlledCallback.RunID
+	contract := business.AgentRT.ControlledCallback.ArtifactContract
+	if runID == "" && contract == "" {
+		return sequenceBundleBinding{}, errNoControlledBinding
+	}
 	if !opaqueRunID.MatchString(runID) {
 		return sequenceBundleBinding{}, errors.New("callback artifact: run id is invalid")
 	}
-	if business.AgentRT.ControlledCallback.ArtifactContract != "sequence_bundle/v1" {
+	if contract != "sequence_bundle/v1" {
 		return sequenceBundleBinding{}, errors.New("callback artifact: contract is invalid")
 	}
 	rootPath, err := filepath.Abs(root)
