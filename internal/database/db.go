@@ -38,7 +38,7 @@ func Open(cfg *config.Database) (*gorm.DB, error) {
 
 // Migrate 创建/更新表；移除非独占 GPU 时的旧唯一索引
 func Migrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&model.Task{}, &model.StopRecord{}); err != nil {
+	if err := db.AutoMigrate(&model.Task{}, &model.StopRecord{}, &model.CallbackDelivery{}); err != nil {
 		return err
 	}
 	if db.Dialector.Name() != "postgres" {
