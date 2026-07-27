@@ -128,15 +128,15 @@ func TestV2DeliverySignsExactBodyAndUsesFreshReceipt(t *testing.T) {
 
 func testSignature(secret, keyID, deliveryID, occurredAt, bodySHA string) string {
 	canonical := "mp_sched_callback_v2\n" +
-		lengthField(keyID) + "\n" +
-		lengthField(deliveryID) + "\n" +
-		lengthField(occurredAt) + "\n" +
-		lengthField(bodySHA) + "\n"
+		testLengthField(keyID) + "\n" +
+		testLengthField(deliveryID) + "\n" +
+		testLengthField(occurredAt) + "\n" +
+		testLengthField(bodySHA) + "\n"
 	h := hmac.New(sha256.New, []byte(secret))
 	_, _ = h.Write([]byte(canonical))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func lengthField(value string) string {
+func testLengthField(value string) string {
 	return strconv.Itoa(len(value)) + ":" + value
 }
