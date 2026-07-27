@@ -15,11 +15,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"mp_sched/internal/config"
-	"mp_sched/internal/model"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"mp_sched/internal/config"
+	"mp_sched/internal/model"
 )
 
 const (
@@ -57,7 +57,9 @@ func New(c *config.Callback, databases ...*gorm.DB) *Client {
 		secs = 10
 	}
 	var db *gorm.DB
-	if len(databases) > 0 { db = databases[0] }
+	if len(databases) > 0 {
+		db = databases[0]
+	}
 	return &Client{cfg: c, hc: &http.Client{Timeout: time.Duration(secs) * time.Second}, db: db}
 }
 
@@ -106,28 +108,46 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 	c.send(ctx, req)
 }
 
-func terminal(event string) bool { return event == EventSucceeded || event == EventFailed || event == EventStopped || event == EventTimeout }
+func terminal(event string) bool {
+	return event == EventSucceeded || event == EventFailed || event == EventStopped || event == EventTimeout
+}
 
 func (c *Client) send(ctx context.Context, req *http.Request) bool {
 	resp, err := c.hc.Do(req.WithContext(ctx))
-	if err != nil { return false }
+	if err != nil {
+		return false
+	}
 	defer resp.Body.Close()
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
 }
 
 func (c *Client) enqueue(ctx context.Context, event, taskID string, req *http.Request) {
 	body, _ := req.GetBody()
-	if body == nil { return }
+	if body == nil {
+		return
+	}
 	encoded, err := io.ReadAll(body)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	headers, err := json.Marshal(req.Header)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	now := time.Now().UTC()
 	row := model.CallbackDelivery{DeliveryID: req.Header.Get(headerDeliveryID), TaskID: taskID, Event: event, Method: req.Method, URL: req.URL.String(), Body: datatypes.JSON(encoded), Headers: datatypes.JSON(headers), Status: "pending", NextAttemptAt: now}
-	if err := c.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "event"}}, DoNothing: true}).Create(&row).Error; err != nil { return }
-	if c.db.WithContext(ctx).Where("task_id = ? AND event = ?", taskID, event).First(&row).Error != nil { return }
-	if row.Status != "pending" { return }
-	if c.claim(ctx, &row) { c.deliver(ctx, &row) }
+	if err := c.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "event"}}, DoNothing: true}).Create(&row).Error; err != nil {
+		return
+	}
+	if c.db.WithContext(ctx).Where("task_id = ? AND event = ?", taskID, event).First(&row).Error != nil {
+		return
+	}
+	if row.Status != "pending" {
+		return
+	}
+	if c.claim(ctx, &row) {
+		c.deliver(ctx, &row)
+	}
 }
 
 func (c *Client) claim(ctx context.Context, row *model.CallbackDelivery) bool {
@@ -140,29 +160,54 @@ func (c *Client) claim(ctx context.Context, row *model.CallbackDelivery) bool {
 
 func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
 	var headers http.Header
-	if json.Unmarshal(row.Headers, &headers) != nil { return }
+	if json.Unmarshal(row.Headers, &headers) != nil {
+		return
+	}
 	req, err := http.NewRequestWithContext(ctx, row.Method, row.URL, bytes.NewReader(row.Body))
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	req.Header = headers
 	now := time.Now().UTC()
 	updates := map[string]any{"attempts": row.Attempts + 1, "status": "pending", "next_attempt_at": now.Add(5 * time.Second)}
-	if c.send(ctx, req) { updates["status"] = "delivered"; updates["delivered_at"] = now }
+	if c.send(ctx, req) {
+		updates["status"] = "delivered"
+		updates["delivered_at"] = now
+	}
 	_ = c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).Where("delivery_id = ? AND status = ?", row.DeliveryID, "delivering").Updates(updates).Error
 }
 
 // Drain retries exact persisted authenticated terminal deliveries after restart.
 func (c *Client) Drain(ctx context.Context) {
-	if c == nil || c.db == nil || c.cfg == nil || !c.cfg.Auth.Enabled() { return }
+	if c == nil || c.db == nil || c.cfg == nil || !c.cfg.Auth.Enabled() {
+		return
+	}
 	var rows []model.CallbackDelivery
-	if c.db.WithContext(ctx).Where("status IN ? AND next_attempt_at <= ?", []string{"pending", "delivering"}, time.Now().UTC()).Limit(100).Find(&rows).Error != nil { return }
-	for i := range rows { if c.claim(ctx, &rows[i]) { c.deliver(ctx, &rows[i]) } }
+	if c.db.WithContext(ctx).Where("status IN ? AND next_attempt_at <= ?", []string{"pending", "delivering"}, time.Now().UTC()).Limit(100).Find(&rows).Error != nil {
+		return
+	}
+	for i := range rows {
+		if c.claim(ctx, &rows[i]) {
+			c.deliver(ctx, &rows[i])
+		}
+	}
 }
 
 func (c *Client) RunLoop(ctx context.Context, interval time.Duration) {
-	if interval <= 0 { interval = 5 * time.Second }
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
 	c.Drain(ctx)
-	ticker := time.NewTicker(interval); defer ticker.Stop()
-	for { select { case <-ctx.Done(): return; case <-ticker.C: c.Drain(ctx) } }
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.Drain(ctx)
+		}
+	}
 }
 
 func (c *Client) addArtifactBinding(body map[string]any, event string, task *model.Task) {
