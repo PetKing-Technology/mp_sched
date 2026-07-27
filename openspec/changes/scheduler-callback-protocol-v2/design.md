@@ -15,7 +15,7 @@ server-owned root; the external payload never supplies an absolute path.
 
 - Emit an opt-in, versioned v2 envelope and headers for every configured
   callback delivery, with HMAC-SHA-256 authentication over exact body bytes.
-- Make each delivery uniquely identifiable and time-stamped at send time.
+- Persist each authenticated terminal delivery until a successful receiver ACK.
 - On a successful controlled ZymCTRL terminal delivery, compute and sign the
   canonical digest for exactly `<artifact_root>/<run_id>/output/sequence_bundle.json`.
 - Remain byte-for-byte compatible with the legacy callback when v2 is absent.
@@ -62,14 +62,16 @@ length prefixes prevent field-boundary ambiguity.  A per-run capability was
 rejected because the present scheduler does not echo it and it would duplicate
 durable Runtime authority.
 
-### 2. New delivery identity and timestamp on every send
+### 2. Persisted delivery identity, ACK, and retry
 
-The client generates a cryptographically random UUID delivery id and obtains a
-UTC RFC3339Nano timestamp immediately before serialization.  These are never
-persisted by scheduler.  Runtime is responsible for durable replay receipts
-and its configured clock-skew policy.  Scheduler retry attempts intentionally
-get new delivery ids; Runtime idempotency is by protected job/current attempt
-plus delivery receipt, not by assuming network retries reused an id.
+For authenticated terminal callbacks, the scheduler records the exact body,
+delivery id, UTC timestamp, and attempt state in a durable outbox before the
+terminal event is considered delivered.  A retry transmits the same exact
+signed bytes and delivery id; only an explicit 2xx ACK marks the row delivered.
+The worker drains pending rows on startup and at a bounded interval, so a
+bridge restart, scheduler restart, timeout, or transient 5xx cannot silently
+lose a completion. Runtime may therefore persist the delivery id as a replay
+receipt without treating retries as a new completion.
 
 ### 3. Artifact digest is scheduler-computed only for the fixed contract
 
@@ -136,8 +138,8 @@ keys only.  The payload contains key id and signature, not the secret.
    service/mount/no-preemption proofs, and all approval gates, configure a key
    and conduct the one-job controlled E2E.
 
-Rollback is configuration-only: disable v2 auth and retain the legacy callback
-path.  No database migration is required.
+Rollback disables v2 auth and retains the legacy callback path. The delivery
+outbox schema is additive and may be retained for audit/retry evidence.
 
 ## Open Questions
 

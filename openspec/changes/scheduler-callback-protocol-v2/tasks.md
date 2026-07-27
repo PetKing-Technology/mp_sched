@@ -16,11 +16,15 @@
 
 ## 3. Regression and documentation
 
-- [x] 3.1 Add verification tests for signature tampering, header conflict,
+- [ ] 3.1 Add RED tests for durable terminal outbox, same-receipt retry,
+  non-2xx/no-response retention, and restart drain.
+- [ ] 3.2 Implement authenticated terminal outbox, explicit ACK handling,
+  bounded retry scheduling, and startup drain.
+- [x] 3.3 Add verification tests for signature tampering, header conflict,
   distinct delivery ids, timestamp shape, and legacy callback regression.
-- [x] 3.2 Document v2 configuration and wire contract without adding secrets
+- [x] 3.4 Document v2 configuration and wire contract without adding secrets
   to example configs.
-- [ ] 3.3 Run focused and broader scheduler tests in the approved remote test
+- [ ] 3.5 Run focused and broader scheduler tests in the approved remote test
   environment; freeze a clean candidate and audit the protocol.
 
 ## 4. Cross-repository enablement gate

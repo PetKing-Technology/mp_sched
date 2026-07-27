@@ -1,5 +1,17 @@
 ## ADDED Requirements
 
+### Requirement: Authenticated terminal deliveries survive receiver and scheduler restart
+For an authenticated terminal callback, mp_sched MUST durably record the exact
+signed delivery before attempting transport, retain it until an explicit 2xx
+receiver acknowledgement, and retry the same delivery id and exact body after
+transport errors, non-2xx responses, or scheduler restart. A retry MUST NOT
+mint a second delivery id for the same terminal outcome.
+
+#### Scenario: Bridge returns temporary failure
+- **WHEN** a protected terminal callback receives a timeout or non-2xx response
+- **THEN** its durable delivery remains pending and a later retry sends the same
+  signed body and delivery id
+
 ### Requirement: Callback protocol v2 authenticates each exact delivery
 When callback v2 authentication is completely configured, mp_sched SHALL emit
 a version-2 callback with a fresh delivery id, UTC RFC3339Nano occurrence time,
@@ -40,4 +52,3 @@ and SHALL reject/ignore any static attempt to select conflicting v2 metadata.
 #### Scenario: Static header conflicts with signed metadata
 - **WHEN** static callback headers include an v2 reserved header name
 - **THEN** the transmitted header value is the scheduler-generated signed value
-
