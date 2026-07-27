@@ -3,12 +3,14 @@ package callback
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"gorm.io/datatypes"
 
+	"mp_sched/internal/config"
 	"mp_sched/internal/model"
 )
 
@@ -78,5 +80,45 @@ func TestCollectSequenceBundleRejectsSymlinkAndUnexpectedFile(t *testing.T) {
 	}
 	if _, err := collectSequenceBundle(root, controlledTask("run_05")); err == nil {
 		t.Fatal("symlinked output unexpectedly accepted")
+	}
+}
+
+func TestV2SucceededCallbackSignsArtifactBindingOrBoundedError(t *testing.T) {
+	root := t.TempDir()
+	body := []byte(`{"sequence_bundle": {"answer": 42}}`)
+	writeBundle(t, root, "run_06", body)
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{Enable: true, URL: srv.URL,
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret", ArtifactRoot: root}})
+	task := controlledTask("run_06")
+	task.TaskID, task.Status = "scheduler-job-6", model.TaskStatusSucceeded
+	c.Fire(t.Context(), EventSucceeded, task)
+	got := captured()
+	var payload map[string]any
+	if err := json.Unmarshal(got.body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(body)
+	want := "sha256:" + hex.EncodeToString(sum[:])
+	if payload["artifact_manifest_digest"] != want {
+		t.Fatalf("artifact digest = %#v, want %q", payload["artifact_manifest_digest"], want)
+	}
+	if payload["artifact_binding_error"] != nil {
+		t.Fatalf("unexpected artifact error: %#v", payload["artifact_binding_error"])
+	}
+
+	missing := controlledTask("run_07")
+	missing.TaskID, missing.Status = "scheduler-job-7", model.TaskStatusSucceeded
+	c.Fire(t.Context(), EventSucceeded, missing)
+	payload = nil
+	if err := json.Unmarshal(captured().body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["artifact_manifest_digest"]; ok {
+		t.Fatalf("missing output claimed digest: %#v", payload)
+	}
+	if payload["artifact_binding_error"] != "unavailable" {
+		t.Fatalf("bounded error = %#v", payload["artifact_binding_error"])
 	}
 }
