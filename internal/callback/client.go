@@ -126,6 +126,7 @@ func (c *Client) enqueue(ctx context.Context, event, taskID string, req *http.Re
 	row := model.CallbackDelivery{DeliveryID: req.Header.Get(headerDeliveryID), TaskID: taskID, Event: event, Method: req.Method, URL: req.URL.String(), Body: datatypes.JSON(encoded), Headers: datatypes.JSON(headers), Status: "pending", NextAttemptAt: now}
 	if err := c.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "event"}}, DoNothing: true}).Create(&row).Error; err != nil { return }
 	if c.db.WithContext(ctx).Where("task_id = ? AND event = ?", taskID, event).First(&row).Error != nil { return }
+	if row.Status != "pending" { return }
 	c.deliver(ctx, &row)
 }
 
