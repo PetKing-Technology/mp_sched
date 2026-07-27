@@ -133,7 +133,7 @@ func (c *Client) enqueue(ctx context.Context, event, taskID string, req *http.Re
 func (c *Client) claim(ctx context.Context, row *model.CallbackDelivery) bool {
 	now := time.Now().UTC()
 	result := c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).
-		Where("delivery_id = ? AND status = ? AND next_attempt_at <= ?", row.DeliveryID, "pending", now).
+		Where("delivery_id = ? AND status IN ? AND next_attempt_at <= ?", row.DeliveryID, []string{"pending", "delivering"}, now).
 		Updates(map[string]any{"status": "delivering", "next_attempt_at": now.Add(30 * time.Second)})
 	return result.Error == nil && result.RowsAffected == 1
 }
@@ -154,7 +154,7 @@ func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
 func (c *Client) Drain(ctx context.Context) {
 	if c == nil || c.db == nil || c.cfg == nil || !c.cfg.Auth.Enabled() { return }
 	var rows []model.CallbackDelivery
-	if c.db.WithContext(ctx).Where("status = ? AND next_attempt_at <= ?", "pending", time.Now().UTC()).Limit(100).Find(&rows).Error != nil { return }
+	if c.db.WithContext(ctx).Where("status IN ? AND next_attempt_at <= ?", []string{"pending", "delivering"}, time.Now().UTC()).Limit(100).Find(&rows).Error != nil { return }
 	for i := range rows { if c.claim(ctx, &rows[i]) { c.deliver(ctx, &rows[i]) } }
 }
 

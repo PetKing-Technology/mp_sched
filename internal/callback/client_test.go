@@ -44,7 +44,7 @@ func TestAuthenticatedTerminalDeliveryPersistsAndRetriesAfterRestart(t *testing.
 	if err := db.Where("task_id = ? AND event = ?", "scheduler-job-1", EventFailed).First(&pending).Error; err != nil { t.Fatal(err) }
 	if pending.Status != "pending" || pending.Attempts != 1 { t.Fatalf("pending row = %#v", pending) }
 	if len(calls) != 1 { t.Fatalf("calls = %d", len(calls)) }
-	if err := db.Model(&model.CallbackDelivery{}).Where("delivery_id = ?", pending.DeliveryID).Update("next_attempt_at", time.Now().UTC()).Error; err != nil { t.Fatal(err) }
+	if err := db.Model(&model.CallbackDelivery{}).Where("delivery_id = ?", pending.DeliveryID).Updates(map[string]any{"status": "delivering", "next_attempt_at": time.Now().UTC()}).Error; err != nil { t.Fatal(err) }
 	status = http.StatusNoContent
 	New(cfg, db).Drain(t.Context())
 	var delivered model.CallbackDelivery
