@@ -126,6 +126,36 @@ func TestV2DeliverySignsExactBodyAndUsesFreshReceipt(t *testing.T) {
 	}
 }
 
+func TestV2ReservedHeadersOverrideStaticValues(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{Enable: true, URL: srv.URL,
+		Headers: map[string]string{
+			"X-MP-Sched-Callback-Version": "forged",
+			"X-MP-Sched-Key-Id":           "forged",
+			"X-MP-Sched-Signature":        "forged",
+		},
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"},
+	})
+	c.Fire(t.Context(), EventFailed, testTask())
+	got := captured()
+	if got.header.Get("X-MP-Sched-Callback-Version") != "2" || got.header.Get("X-MP-Sched-Key-Id") != "fixture-k1" || got.header.Get("X-MP-Sched-Signature") == "forged" {
+		t.Fatalf("reserved header was not scheduler-owned: %#v", got.header)
+	}
+}
+
+func TestV2SignatureRejectsBodyTampering(t *testing.T) {
+	body := []byte(`{"event":"failed"}`)
+	original := sha256.Sum256(body)
+	signature := testSignature("fixture-secret", "fixture-k1", "delivery-1", "2026-07-27T00:00:00Z", hex.EncodeToString(original[:]))
+	tampered := append([]byte(nil), body...)
+	tampered[len(tampered)-2] = 'd'
+	tamperedDigest := sha256.Sum256(tampered)
+	if hmac.Equal([]byte(signature), []byte(testSignature("fixture-secret", "fixture-k1", "delivery-1", "2026-07-27T00:00:00Z", hex.EncodeToString(tamperedDigest[:]))) ) {
+		t.Fatal("signature accepted tampered body")
+	}
+}
+
 func testSignature(secret, keyID, deliveryID, occurredAt, bodySHA string) string {
 	canonical := "mp_sched_callback_v2\n" +
 		testLengthField(keyID) + "\n" +

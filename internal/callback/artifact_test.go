@@ -122,3 +122,25 @@ func TestV2SucceededCallbackSignsArtifactBindingOrBoundedError(t *testing.T) {
 		t.Fatalf("bounded error = %#v", payload["artifact_binding_error"])
 	}
 }
+
+func TestV2NonSuccessDoesNotClaimArtifactDigest(t *testing.T) {
+	root := t.TempDir()
+	writeBundle(t, root, "run_08", []byte(`{"sequence_bundle": {}}`))
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	c := New(&config.Callback{Enable: true, URL: srv.URL,
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret", ArtifactRoot: root}})
+	task := controlledTask("run_08")
+	task.TaskID, task.Status = "scheduler-job-8", model.TaskStatusFailed
+	c.Fire(t.Context(), EventFailed, task)
+	var payload map[string]any
+	if err := json.Unmarshal(captured().body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["artifact_manifest_digest"]; ok {
+		t.Fatalf("non-success claimed artifact digest: %#v", payload)
+	}
+	if _, ok := payload["artifact_binding_error"]; ok {
+		t.Fatalf("non-success claimed artifact error: %#v", payload)
+	}
+}
