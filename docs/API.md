@@ -1,5 +1,22 @@
 # HTTP API
 
+## Callback protocol v2
+
+When `callback.auth.key_id` and protected `callback.auth.hmac_secret` are both
+configured, every callback delivery adds `protocol_version`
+(`mp_sched_callback/v2`), `delivery_id`, and `occurred_at` to the body, plus
+`X-MP-Sched-Callback-Version`, `X-MP-Sched-Key-Id`,
+`X-MP-Sched-Delivery-Id`, `X-MP-Sched-Occurred-At`,
+`X-MP-Sched-Content-SHA256`, and `X-MP-Sched-Signature` headers.
+
+Receivers MUST verify the HMAC against the exact raw body before trusting
+decoded fields. A fresh delivery id is generated for each send attempt;
+durable replay receipt and clock-skew policy belong to the receiving Runtime.
+For controlled `sequence_bundle/v1` success only, a signed body includes
+`artifact_binding` and `artifact_manifest_digest`. Collection failure instead
+uses only `artifact_binding_error: unavailable`; receivers MUST NOT complete
+work from that delivery. No real HMAC secret belongs in this documentation.
+
 Base URL：`http://<host>:<port>`，端口由 `controller.http.addr`（优先）或 `server.addr` 决定，默认 `:8080`。**所有业务接口**统一挂在路径前缀 **`/api/sched/v1`** 下（健康检查亦在此前缀内）。
 
 `Content-Type: application/json`。所有时间字段为 RFC3339 UTC。任务 ID 由本服务在入队时生成（UUID），调用方不得指定。

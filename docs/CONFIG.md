@@ -75,6 +75,29 @@ go run ./cmd/mp-worker     -config configs/development.yaml
 
 `timeout` 是运行超时扫描强杀语义，独立于 `failed`，需要业务区分时请把它显式加进 `events`。
 
+### callback.auth (protocol v2)
+
+`callback.auth` is opt-in. Protocol v2 is active only when both `key_id` and
+`hmac_secret` are non-empty. `hmac_secret` is signing material: supply it only
+through protected deployment configuration; never commit, print, or put it in
+static callback headers. An absent or partial `auth` block preserves the legacy
+callback body and headers.
+
+| Key | Meaning |
+|-----|---------|
+| `key_id` | Public verifier key identifier emitted in the v2 metadata. |
+| `hmac_secret` | In-process HMAC-SHA-256 key; never echoed by mp_sched. |
+| `artifact_root` | Optional server-owned root for controlled `sequence_bundle/v1` success binding. |
+
+V2 writes scheduler-owned `X-MP-Sched-*` headers after static `headers`, so a
+static value cannot override signed metadata. It signs a length-delimited tuple
+of key id, delivery id, occurred-at timestamp, and SHA-256 of the exact JSON
+body. For controlled `succeeded`, the collector emits raw-byte
+`sha256:<hex>` for exactly
+`<artifact_root>/<run_id>/output/sequence_bundle.json`; missing or unsafe
+output yields only `artifact_binding_error: unavailable`. Non-success terminal
+events never claim a success digest.
+
 ## 7. worker
 
 | 键 | 含义 | 缺省 |

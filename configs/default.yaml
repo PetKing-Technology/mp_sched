@@ -27,6 +27,13 @@ callback:
   headers: {}
     # Authorization: "Bearer YOUR_TOKEN"
     # X-Mp-Sched-Source: "mp-worker"
+  # protocol v2 is disabled unless BOTH key_id and hmac_secret are supplied
+  # from protected deployment configuration. Never commit a real secret.
+  auth:
+    key_id: ""
+    hmac_secret: ""
+    # Server-owned root for controlled sequence_bundle/v1 output only.
+    artifact_root: ""
   # 空 = 全部事件；要把 timeout 与 failed 区分时建议显式列出
   events: []
     # - admitted
