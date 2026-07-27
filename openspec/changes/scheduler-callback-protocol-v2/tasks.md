@@ -9,14 +9,14 @@
 
 ## 2. Artifact binding
 
-- [ ] 2.1 Add RED tests for canonical sequence-bundle digest, absent output,
+- [x] 2.1 Add RED tests for canonical sequence-bundle digest, absent output,
   symlink/path traversal, invalid JSON, and non-success terminal callbacks.
-- [ ] 2.2 Implement server-rooted controlled `sequence_bundle/v1` collector
+- [x] 2.2 Implement server-rooted controlled `sequence_bundle/v1` collector
   and signed bounded error outcome.
 
 ## 3. Regression and documentation
 
-- [ ] 3.1 Add verification tests for signature tampering, header conflict,
+- [x] 3.1 Add verification tests for signature tampering, header conflict,
   distinct delivery ids, timestamp shape, and legacy callback regression.
 - [ ] 3.2 Document v2 configuration and wire contract without adding secrets
   to example configs.

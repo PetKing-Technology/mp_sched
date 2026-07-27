@@ -151,7 +151,7 @@ func TestV2SignatureRejectsBodyTampering(t *testing.T) {
 	tampered := append([]byte(nil), body...)
 	tampered[len(tampered)-2] = 'd'
 	tamperedDigest := sha256.Sum256(tampered)
-	if hmac.Equal([]byte(signature), []byte(testSignature("fixture-secret", "fixture-k1", "delivery-1", "2026-07-27T00:00:00Z", hex.EncodeToString(tamperedDigest[:]))) ) {
+	if hmac.Equal([]byte(signature), []byte(testSignature("fixture-secret", "fixture-k1", "delivery-1", "2026-07-27T00:00:00Z", hex.EncodeToString(tamperedDigest[:])))) {
 		t.Fatal("signature accepted tampered body")
 	}
 }
