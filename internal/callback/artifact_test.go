@@ -83,6 +83,18 @@ func TestCollectSequenceBundleRejectsSymlinkAndUnexpectedFile(t *testing.T) {
 	}
 }
 
+func TestCollectSequenceBundleRejectsSymlinkedRunDirectory(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	writeBundle(t, target, "target-run", []byte(`{"sequence_bundle": {}}`))
+	if err := os.Symlink(filepath.Join(target, "target-run"), filepath.Join(root, "run_09")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := collectSequenceBundle(root, controlledTask("run_09")); err == nil {
+		t.Fatal("symlinked run directory unexpectedly accepted")
+	}
+}
+
 func TestV2SucceededCallbackSignsArtifactBindingOrBoundedError(t *testing.T) {
 	root := t.TempDir()
 	body := []byte(`{"sequence_bundle": {"answer": 42}}`)
