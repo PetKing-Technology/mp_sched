@@ -85,8 +85,21 @@ type Callback struct {
 	Method         string            `mapstructure:"method" yaml:"method"`
 	TimeoutSeconds int               `mapstructure:"timeout_seconds" yaml:"timeout_seconds"`
 	Headers        map[string]string `mapstructure:"headers" yaml:"headers"`
+	Auth           CallbackAuth      `mapstructure:"auth" yaml:"auth"`
 	// Events 空表示全部；否则仅推送列出的
 	Events []string `mapstructure:"events" yaml:"events"`
+}
+
+// CallbackAuth enables the opt-in signed callback protocol. HMACSecret is
+// intentionally never rendered by callback errors or documentation examples.
+type CallbackAuth struct {
+	KeyID        string `mapstructure:"key_id" yaml:"key_id"`
+	HMACSecret   string `mapstructure:"hmac_secret" yaml:"hmac_secret"`
+	ArtifactRoot string `mapstructure:"artifact_root" yaml:"artifact_root"`
+}
+
+func (a CallbackAuth) Enabled() bool {
+	return strings.TrimSpace(a.KeyID) != "" && a.HMACSecret != ""
 }
 
 // Worker 从 DB 拉取 pending 的进程
