@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,6 +17,9 @@ import (
 
 	"mp_sched/internal/config"
 	"mp_sched/internal/model"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -41,9 +45,10 @@ const (
 type Client struct {
 	cfg *config.Callback
 	hc  *http.Client
+	db  *gorm.DB
 }
 
-func New(c *config.Callback) *Client {
+func New(c *config.Callback, databases ...*gorm.DB) *Client {
 	if c == nil {
 		return &Client{}
 	}
@@ -51,7 +56,9 @@ func New(c *config.Callback) *Client {
 	if secs <= 0 {
 		secs = 10
 	}
-	return &Client{cfg: c, hc: &http.Client{Timeout: time.Duration(secs) * time.Second}}
+	var db *gorm.DB
+	if len(databases) > 0 { db = databases[0] }
+	return &Client{cfg: c, hc: &http.Client{Timeout: time.Duration(secs) * time.Second}, db: db}
 }
 
 // Fire does nothing when callbacks are disabled or the event is filtered out.
@@ -92,7 +99,61 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 			}
 		}
 	}
-	_, _ = c.hc.Do(req)
+	if c.cfg.Auth.Enabled() && terminal(event) && c.db != nil {
+		c.enqueue(ctx, event, t.TaskID, req)
+		return
+	}
+	c.send(ctx, req)
+}
+
+func terminal(event string) bool { return event == EventSucceeded || event == EventFailed || event == EventStopped || event == EventTimeout }
+
+func (c *Client) send(ctx context.Context, req *http.Request) bool {
+	resp, err := c.hc.Do(req.WithContext(ctx))
+	if err != nil { return false }
+	defer resp.Body.Close()
+	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+func (c *Client) enqueue(ctx context.Context, event, taskID string, req *http.Request) {
+	body, _ := req.GetBody()
+	if body == nil { return }
+	encoded, err := io.ReadAll(body)
+	if err != nil { return }
+	headers, err := json.Marshal(req.Header)
+	if err != nil { return }
+	now := time.Now().UTC()
+	row := model.CallbackDelivery{DeliveryID: req.Header.Get(headerDeliveryID), TaskID: taskID, Event: event, Method: req.Method, URL: req.URL.String(), Body: datatypes.JSON(encoded), Headers: datatypes.JSON(headers), Status: "pending", NextAttemptAt: now}
+	if err := c.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "task_id"}, {Name: "event"}}, DoNothing: true}).Create(&row).Error; err != nil { return }
+	if c.db.WithContext(ctx).Where("task_id = ? AND event = ?", taskID, event).First(&row).Error != nil { return }
+	c.deliver(ctx, &row)
+}
+
+func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
+	var headers http.Header
+	if json.Unmarshal(row.Headers, &headers) != nil { return }
+	req, err := http.NewRequestWithContext(ctx, row.Method, row.URL, bytes.NewReader(row.Body))
+	if err != nil { return }
+	req.Header = headers
+	now := time.Now().UTC()
+	updates := map[string]any{"attempts": row.Attempts + 1, "next_attempt_at": now.Add(5 * time.Second)}
+	if c.send(ctx, req) { updates["status"] = "delivered"; updates["delivered_at"] = now }
+	_ = c.db.WithContext(ctx).Model(&model.CallbackDelivery{}).Where("delivery_id = ?", row.DeliveryID).Updates(updates).Error
+}
+
+// Drain retries exact persisted authenticated terminal deliveries after restart.
+func (c *Client) Drain(ctx context.Context) {
+	if c == nil || c.db == nil || c.cfg == nil || !c.cfg.Auth.Enabled() { return }
+	var rows []model.CallbackDelivery
+	if c.db.WithContext(ctx).Where("status = ? AND next_attempt_at <= ?", "pending", time.Now().UTC()).Limit(100).Find(&rows).Error != nil { return }
+	for i := range rows { c.deliver(ctx, &rows[i]) }
+}
+
+func (c *Client) RunLoop(ctx context.Context, interval time.Duration) {
+	if interval <= 0 { interval = 5 * time.Second }
+	c.Drain(ctx)
+	ticker := time.NewTicker(interval); defer ticker.Stop()
+	for { select { case <-ctx.Done(): return; case <-ticker.C: c.Drain(ctx) } }
 }
 
 func (c *Client) addArtifactBinding(body map[string]any, event string, task *model.Task) {

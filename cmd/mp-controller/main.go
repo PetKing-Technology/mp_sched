@@ -60,7 +60,8 @@ func main() {
 	}
 	repo := &taskrepo.Repo{DB: db}
 	rec := &recordrepo.Repo{DB: db}
-	cb := callback.New(&cfg.Callback)
+	cb := callback.New(&cfg.Callback, db)
+	go cb.RunLoop(ctx, 5*time.Second)
 	pl := &pipeline.Pipeline{Cfg: cfg, Repo: repo, Reg: reg, Rec: rec, CB: cb}
 
 	h := &controller.Handlers{Pl: pl, Reg: reg, Repo: repo}
