@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,8 +16,42 @@ import (
 	"time"
 
 	"mp_sched/internal/config"
+	"mp_sched/internal/database"
 	"mp_sched/internal/model"
 )
+
+func TestAuthenticatedTerminalDeliveryPersistsAndRetriesAfterRestart(t *testing.T) {
+	dsn := os.Getenv("MP_SCHED_OUTBOX_TEST_DSN")
+	if dsn == "" {
+		t.Skip("MP_SCHED_OUTBOX_TEST_DSN is not configured")
+	}
+	db, err := database.Open(&config.Database{DSN: dsn})
+	if err != nil { t.Fatal(err) }
+	if err := database.Migrate(db); err != nil { t.Fatal(err) }
+	if err := db.Exec("DELETE FROM callback_deliveries").Error; err != nil { t.Fatal(err) }
+	var calls []capturedRequest
+	status := http.StatusServiceUnavailable
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		calls = append(calls, capturedRequest{header: r.Header.Clone(), body: body})
+		w.WriteHeader(status)
+	}))
+	defer srv.Close()
+	cfg := &config.Callback{Enable: true, URL: srv.URL, Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"}}
+	first := New(cfg, db)
+	first.Fire(t.Context(), EventFailed, testTask())
+	var pending model.CallbackDelivery
+	if err := db.Where("task_id = ? AND event = ?", "scheduler-job-1", EventFailed).First(&pending).Error; err != nil { t.Fatal(err) }
+	if pending.Status != "pending" || pending.Attempts != 1 { t.Fatalf("pending row = %#v", pending) }
+	if len(calls) != 1 { t.Fatalf("calls = %d", len(calls)) }
+	if err := db.Model(&model.CallbackDelivery{}).Where("delivery_id = ?", pending.DeliveryID).Update("next_attempt_at", time.Now().UTC()).Error; err != nil { t.Fatal(err) }
+	status = http.StatusNoContent
+	New(cfg, db).Drain(t.Context())
+	var delivered model.CallbackDelivery
+	if err := db.Where("delivery_id = ?", pending.DeliveryID).First(&delivered).Error; err != nil { t.Fatal(err) }
+	if delivered.Status != "delivered" || delivered.Attempts != 2 { t.Fatalf("delivered row = %#v", delivered) }
+	if len(calls) != 2 || calls[0].header.Get(headerDeliveryID) != calls[1].header.Get(headerDeliveryID) || string(calls[0].body) != string(calls[1].body) { t.Fatal("restart retry changed signed delivery") }
+}
 
 type capturedRequest struct {
 	header http.Header
