@@ -51,6 +51,17 @@ func TestAuthenticatedTerminalDeliveryPersistsAndRetriesAfterRestart(t *testing.
 	if err := db.Where("delivery_id = ?", pending.DeliveryID).First(&delivered).Error; err != nil { t.Fatal(err) }
 	if delivered.Status != "delivered" || delivered.Attempts != 2 { t.Fatalf("delivered row = %#v", delivered) }
 	if len(calls) != 2 || calls[0].header.Get(headerDeliveryID) != calls[1].header.Get(headerDeliveryID) || string(calls[0].body) != string(calls[1].body) { t.Fatal("restart retry changed signed delivery") }
+	for _, call := range calls {
+		bodyHash := sha256.Sum256(call.body)
+		bodySHA := hex.EncodeToString(bodyHash[:])
+		if call.header.Get(headerContentSHA256) != bodySHA {
+			t.Fatalf("persisted delivery digest does not match sent body")
+		}
+		want := testSignature("fixture-secret", call.header.Get(headerKeyID), call.header.Get(headerDeliveryID), call.header.Get(headerOccurredAt), bodySHA)
+		if !hmac.Equal([]byte(call.header.Get(headerSignature)), []byte(want)) {
+			t.Fatalf("persisted delivery signature does not match sent body")
+		}
+	}
 }
 
 type capturedRequest struct {
