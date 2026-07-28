@@ -172,7 +172,7 @@ func TestV2ControlledDeliveryEchoesAuthorityInsideSignedBody(t *testing.T) {
 	var payload map[string]any
 	if err := json.Unmarshal(got.body, &payload); err != nil { t.Fatal(err) }
 	for key, want := range map[string]any{
-		"tenant_id":"tenant-controlled", "generation":"laccm_zymctrl_v2_001", "task_id":"task-controlled", "work_unit_id":"s1-zymctrl", "run_id":"run-controlled", "attempt":float64(1), "fencing_token":"fence-controlled", "scheduler_job_id":"scheduler-job-1", "terminal_status":EventSucceeded,
+		"tenant_id":"tenant-controlled", "generation":"laccm_zymctrl_v2_001", "task_id":"task-controlled", "work_unit_id":"s1-zymctrl", "run_id":"run-controlled", "attempt":float64(1), "fencing_token":"fence-controlled", "provider_task_ref":"scheduler-job-1", "scheduler_job_id":"scheduler-job-1", "terminal_status":EventSucceeded,
 	} {
 		if payload[key] != want { t.Fatalf("%s = %#v, want %#v", key, payload[key], want) }
 	}

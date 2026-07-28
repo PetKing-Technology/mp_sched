@@ -65,6 +65,7 @@ func addControlledAuthority(body map[string]any, event string, task *model.Task)
 	body["run_id"] = c.RunID
 	body["attempt"] = c.Attempt
 	body["fencing_token"] = c.FencingToken
+	body["provider_task_ref"] = task.TaskID
 	body["scheduler_job_id"] = task.TaskID
 	body["terminal_status"] = event
 }
