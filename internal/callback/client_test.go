@@ -161,6 +161,25 @@ func TestV2DeliverySignsExactBodyAndUsesFreshReceipt(t *testing.T) {
 	}
 }
 
+func TestV2ControlledDeliveryEchoesAuthorityInsideSignedBody(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	task := testTask()
+	task.Business = []byte(`{"agent_rt":{"controlled_callback":{"tenant_id":"tenant-controlled","generation":"laccm_zymctrl_v2_001","task_id":"task-controlled","work_unit_id":"s1-zymctrl","run_id":"run-controlled","attempt":1,"fencing_token":"fence-controlled","artifact_contract":"sequence_bundle/v1"}}}`)
+	c := New(&config.Callback{Enable: true, URL: srv.URL, Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"}})
+	c.Fire(t.Context(), EventSucceeded, task)
+	got := captured()
+	var payload map[string]any
+	if err := json.Unmarshal(got.body, &payload); err != nil { t.Fatal(err) }
+	for key, want := range map[string]any{
+		"tenant_id":"tenant-controlled", "generation":"laccm_zymctrl_v2_001", "task_id":"task-controlled", "work_unit_id":"s1-zymctrl", "run_id":"run-controlled", "attempt":float64(1), "fencing_token":"fence-controlled", "scheduler_job_id":"scheduler-job-1", "terminal_status":EventSucceeded,
+	} {
+		if payload[key] != want { t.Fatalf("%s = %#v, want %#v", key, payload[key], want) }
+	}
+	bodyHash := sha256.Sum256(got.body)
+	if got.header.Get("X-MP-Sched-Content-SHA256") != hex.EncodeToString(bodyHash[:]) { t.Fatal("authority echo was not signed") }
+}
+
 func TestV2ReservedHeadersOverrideStaticValues(t *testing.T) {
 	srv, captured := captureServer(t)
 	defer srv.Close()

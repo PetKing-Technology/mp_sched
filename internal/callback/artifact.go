@@ -31,10 +31,42 @@ type sequenceBundleBinding struct {
 type taskBusinessBinding struct {
 	AgentRT struct {
 		ControlledCallback struct {
+			TenantID         string `json:"tenant_id"`
+			Generation       string `json:"generation"`
+			TaskID           string `json:"task_id"`
+			WorkUnitID       string `json:"work_unit_id"`
 			RunID            string `json:"run_id"`
+			Attempt          int    `json:"attempt"`
+			FencingToken     string `json:"fencing_token"`
 			ArtifactContract string `json:"artifact_contract"`
 		} `json:"controlled_callback"`
 	} `json:"agent_rt"`
+}
+
+// addControlledAuthority copies the non-secret, durable run identity into the
+// exact callback body that is subsequently signed.  The shared bridge uses
+// these fields as an echo check before it can route a completion.
+func addControlledAuthority(body map[string]any, event string, task *model.Task) {
+	if task == nil || body == nil {
+		return
+	}
+	var business taskBusinessBinding
+	if json.Unmarshal(task.Business, &business) != nil {
+		return
+	}
+	c := business.AgentRT.ControlledCallback
+	if c.RunID == "" && c.ArtifactContract == "" {
+		return
+	}
+	body["tenant_id"] = c.TenantID
+	body["generation"] = c.Generation
+	body["task_id"] = c.TaskID
+	body["work_unit_id"] = c.WorkUnitID
+	body["run_id"] = c.RunID
+	body["attempt"] = c.Attempt
+	body["fencing_token"] = c.FencingToken
+	body["scheduler_job_id"] = task.TaskID
+	body["terminal_status"] = event
 }
 
 func collectSequenceBundle(root string, task *model.Task) (sequenceBundleBinding, error) {

@@ -80,6 +80,7 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 		body["protocol_version"] = protocolVersion
 		body["delivery_id"] = meta.DeliveryID
 		body["occurred_at"] = meta.OccurredAt
+		addControlledAuthority(body, event, t)
 		c.addArtifactBinding(body, event, t)
 	}
 	encoded, err := json.Marshal(body)
