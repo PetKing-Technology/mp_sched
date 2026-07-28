@@ -221,6 +221,25 @@ func TestV2SignatureRejectsBodyTampering(t *testing.T) {
 	}
 }
 
+func TestPersistedAuthenticatedBodyRebindsIntegrityHeaders(t *testing.T) {
+	c := New(&config.Callback{Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"}})
+	meta := callbackMeta{DeliveryID: "delivery-1", OccurredAt: "2026-07-28T00:00:00Z"}
+	headers := c.v2Headers(meta, []byte(`{"z":1,"a":2}`))
+	persisted := []byte(`{"a":2,"z":1}`) // PostgreSQL jsonb may canonicalize object order.
+
+	c.rebindV2Headers(headers, persisted)
+
+	digest := sha256.Sum256(persisted)
+	bodySHA := hex.EncodeToString(digest[:])
+	if headers.Get(headerContentSHA256) != bodySHA {
+		t.Fatal("persisted body digest was not rebound")
+	}
+	want := testSignature("fixture-secret", "fixture-k1", meta.DeliveryID, meta.OccurredAt, bodySHA)
+	if !hmac.Equal([]byte(headers.Get(headerSignature)), []byte(want)) {
+		t.Fatal("persisted body signature was not rebound")
+	}
+}
+
 func testSignature(secret, keyID, deliveryID, occurredAt, bodySHA string) string {
 	canonical := "mp_sched_callback_v2\n" +
 		testLengthField(keyID) + "\n" +
