@@ -1,5 +1,5 @@
 workflow: full
-phase: design
+phase: build
 context_compression: off
 build_mode: null
 build_pause: null
@@ -10,8 +10,8 @@ isolation: null
 verify_mode: null
 auto_transition: true
 base_ref: 454334313ca0ce66fac922dc888f7266fd225633
-design_doc: null
-plan: null
+design_doc: docs/superpowers/specs/2026-07-28-petking-scheduler-replacement-design.md
+plan: docs/superpowers/plans/2026-07-28-petking-scheduler-replacement.md
 verify_result: pending
 verification_report: null
 branch_status: pending
@@ -19,4 +19,4 @@ created_at: 2026-07-28
 verified_at: null
 archived: false
 handoff_context: openspec/changes/migrate-jesse-scheduler-to-petking/.comet/handoff/design-context.json
-handoff_hash: 4f1bf3d98280a4adf830350ded32b1d0d2d2bf5daa355e48186f7458daac0b1c
+handoff_hash: ff22a7d2b695c4d4c3e396657a852e1d321d5a21b0efe45d834455a4d6b9b20c

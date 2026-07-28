@@ -1,14 +1,14 @@
 ## 1. Source compatibility
 
-- [ ] 1.1 Freeze and record the Jesse committed source snapshot; prove that uncommitted configuration and backups are excluded.
-- [ ] 1.2 Produce a file-level behavior classification for all Jesse/PetKing differences and identify the accepted migration set, including the approved legacy dynamic-mount and Docker-socket compatibility waiver.
-- [ ] 1.3 Add RED compatibility tests for every accepted provider, pipeline, model, or API behavior.
+- [x] 1.1 Freeze and record the Jesse committed source snapshot; prove that uncommitted configuration and backups are excluded.
+- [x] 1.2 Produce a file-level behavior classification for all Jesse/PetKing differences and identify the accepted migration set, including the approved legacy dynamic-mount and Docker-socket compatibility waiver.
+- [x] 1.3 Add RED compatibility tests for every accepted provider, pipeline, model, or API behavior.
 
 ## 2. PetKing source migration
 
-- [ ] 2.1 Transplant accepted Jesse behavior into the PetKing migration branch without copying deployment configuration, backups, credentials, or old service scripts.
-- [ ] 2.2 Make the new tests and existing PetKing regression suite pass; preserve legacy callback behavior with callback auth absent.
-- [ ] 2.3 Layer callback v2, artifact binding, and durable delivery outbox onto the migrated baseline and resolve any conflicts with regression coverage.
+- [x] 2.1 Transplant accepted Jesse behavior into the PetKing migration branch without copying deployment configuration, backups, credentials, or old service scripts.
+- [x] 2.2 Make the new tests and existing PetKing regression suite pass; preserve legacy callback behavior with callback auth absent.
+- [x] 2.3 Layer callback v2, artifact binding, and durable delivery outbox onto the migrated baseline and resolve any conflicts with regression coverage.
 
 ## 3. Deployment replacement contract
 
@@ -18,7 +18,7 @@
 
 ## 4. Verification and cutover
 
-- [ ] 4.1 Run focused tests, full `go test ./...`, a PostgreSQL compatibility test, and the durable-delivery restart test.
-- [ ] 4.2 Audit the frozen candidate and resolve blocking/high findings.
+- [x] 4.1 Run focused tests, full `go test ./...`, a PostgreSQL compatibility test, and the durable-delivery restart test.
+- [x] 4.2 Audit the frozen candidate and resolve blocking/high findings.
 - [ ] 4.3 Deploy an isolated PetKing shadow candidate; verify a non-GPU representative end-to-end task without touching the old scheduler's task store.
 - [ ] 4.4 Execute the authorized single-writer handoff, observe outputs/callbacks, and retain a rollback evidence record before retiring Jesse.

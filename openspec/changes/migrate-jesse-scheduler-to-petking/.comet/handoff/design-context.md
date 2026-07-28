@@ -3,7 +3,7 @@
 - Change: migrate-jesse-scheduler-to-petking
 - Phase: design
 - Mode: full
-- Context hash: 4f1bf3d98280a4adf830350ded32b1d0d2d2bf5daa355e48186f7458daac0b1c
+- Context hash: ff22a7d2b695c4d4c3e396657a852e1d321d5a21b0efe45d834455a4d6b9b20c
 
 Generated-by: comet-handoff.sh
 
@@ -49,8 +49,8 @@ The active scheduler is sourced from `JesseEisen/mp_sched` in a dirty, session-o
 ## openspec/changes/migrate-jesse-scheduler-to-petking/design.md
 
 - Source: openspec/changes/migrate-jesse-scheduler-to-petking/design.md
-- Lines: 1-53
-- SHA256: e6049de612f9583d8d50a0f6ba2443df1b296c20aae22a895d25c278e21c6a4d
+- Lines: 1-57
+- SHA256: 16d79dd0f0ec555f8fa3c811a5856ac4fcad31050a1aa76797170e0cba24b878
 
 ```md
 ## Context
@@ -68,6 +68,10 @@ The target is not an in-place overwrite.  PetKing becomes a separately deployed,
 | PetKing callback-v2 branch `bf56405` | signed callback, artifact binding, durable outbox and tests | deployment configuration and live service state |
 
 The migration branch must retain `origin` as `PetKing-Technology/mp_sched`.  The Jesse snapshot is comparison input only and must never become a push remote.
+
+### Accepted migration risk: legacy container privileges
+
+The operator selected compatibility option 1 on 2026-07-28.  The migration SHALL preserve Jesse's committed dynamic absolute host-path mounts and writable `/var/run/docker.sock` mount for compatibility.  This is an explicit temporary acceptance of the legacy container-privilege boundary, not a default for new ZymCTRL profiles.  The frozen candidate audit and cutover evidence MUST name this waiver and prove that no uncommitted configuration or backup was imported.
 
 ## Architecture and flow
 
@@ -112,13 +116,13 @@ The later managed PetKing worker must use one explicit controlled policy for Zym
 
 - Source: openspec/changes/migrate-jesse-scheduler-to-petking/tasks.md
 - Lines: 1-24
-- SHA256: 7c6e7b0aa0450d5c93c3526b5dc696e8169a80ab089e64bb86537498443429fb
+- SHA256: 3011889b639e65085b6e041d27c61c98096e587f82edbfb3f9cf04a4b7908fc8
 
 ```md
 ## 1. Source compatibility
 
 - [ ] 1.1 Freeze and record the Jesse committed source snapshot; prove that uncommitted configuration and backups are excluded.
-- [ ] 1.2 Produce a file-level behavior classification for all Jesse/PetKing differences and identify the accepted migration set.
+- [ ] 1.2 Produce a file-level behavior classification for all Jesse/PetKing differences and identify the accepted migration set, including the approved legacy dynamic-mount and Docker-socket compatibility waiver.
 - [ ] 1.3 Add RED compatibility tests for every accepted provider, pipeline, model, or API behavior.
 
 ## 2. PetKing source migration

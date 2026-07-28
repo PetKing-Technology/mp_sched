@@ -4,11 +4,11 @@
   "mode": "full",
   "canonical_spec": "openspec",
   "generated_by": "comet-handoff.sh",
-  "context_hash": "4f1bf3d98280a4adf830350ded32b1d0d2d2bf5daa355e48186f7458daac0b1c",
+  "context_hash": "ff22a7d2b695c4d4c3e396657a852e1d321d5a21b0efe45d834455a4d6b9b20c",
   "files": [
     { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/proposal.md", "sha256": "88b4b7ab581350354cb4264fbf54e8fc310b7525ada9a87010cd114f23e45bd3" },
-    { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/design.md", "sha256": "e6049de612f9583d8d50a0f6ba2443df1b296c20aae22a895d25c278e21c6a4d" },
-    { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/tasks.md", "sha256": "7c6e7b0aa0450d5c93c3526b5dc696e8169a80ab089e64bb86537498443429fb" },
+    { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/design.md", "sha256": "16d79dd0f0ec555f8fa3c811a5856ac4fcad31050a1aa76797170e0cba24b878" },
+    { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/tasks.md", "sha256": "3011889b639e65085b6e041d27c61c98096e587f82edbfb3f9cf04a4b7908fc8" },
     { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/specs/canonical-scheduler-source-migration/spec.md", "sha256": "325f40746c29ad64785aa2f98e2d0d7c0c23f2c7e53298970c3b5a058a5f46da" },
     { "path": "openspec/changes/migrate-jesse-scheduler-to-petking/specs/managed-scheduler-replacement/spec.md", "sha256": "e4b7ad5913354a33a91ab005fc5452a724a259abf4dcfc49ee5aa86059d85e52" }
   ]
