@@ -208,6 +208,16 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 			})
 		}
 	}
+	for _, m := range spec.Mounts {
+		h := strings.TrimSpace(m.HostPath)
+		p := strings.TrimSpace(m.ContainerPath)
+		if h == "" || p == "" || !filepath.IsAbs(h) || !filepath.IsAbs(p) {
+			return "", nil, nil, fmt.Errorf("docker: task mount paths must be absolute")
+		}
+		mnts = append(mnts, mount.Mount{
+			Type: mount.TypeBind, Source: h, Target: p, ReadOnly: m.ReadOnly,
+		})
+	}
 	if ConfigFetchByWorker(&spec) && strings.TrimSpace(spec.ConfigOSSKey) != "" {
 		local, err := c.downloadFromOSS(ctx, t.TaskID, spec.ConfigOSSKey)
 		if err != nil {

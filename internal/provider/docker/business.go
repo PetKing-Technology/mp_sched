@@ -21,6 +21,7 @@ type BusinessSpec struct {
 	Hostname    string   `json:"hostname"`
 	NetworkMode string   `json:"network_mode"`
 	AutoRemove  bool     `json:"auto_remove"`
+	Mounts      []TaskMount `json:"mounts"`
 
 	// 以下为 type=config（或空，默认）时使用
 	ConfigOSSKey        string `json:"config_oss_key"`
@@ -30,6 +31,15 @@ type BusinessSpec struct {
 	// 以下为 type=env 时使用
 	EnvKey   string `json:"env_key"`
 	EnvValue string `json:"env_value"`
+}
+
+// TaskMount is an explicit per-task bind mount.  It is intentionally kept
+// separate from the scheduler's global Docker mounts so a completion artifact
+// can be written into the exact host directory registered by Runtime.
+type TaskMount struct {
+	HostPath      string `json:"host_path"`
+	ContainerPath string `json:"container_path"`
+	ReadOnly      bool   `json:"read_only"`
 }
 
 func parseBusiness(raw []byte) (BusinessSpec, error) {
