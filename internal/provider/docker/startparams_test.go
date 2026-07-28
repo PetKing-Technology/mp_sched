@@ -101,3 +101,45 @@ func TestStartParamsSnapshot_DedupedDeviceIDsFromMultiset(t *testing.T) {
 		t.Fatalf("device_ids: %v", ids)
 	}
 }
+
+func TestStartParamsSnapshot_UsesTaskArtifactMount(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		TaskID:    "44444444-4444-4444-4444-444444444444",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "alpine:3.20",
+		Business:  datatypes.JSON(`{"mounts":[{"host_path":"/var/lib/mpai-zymctrl/output/run-1","container_path":"/job","read_only":false}]}`),
+	}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Host.Mounts) != 1 {
+		t.Fatalf("want one task mount, got %#v", snap.Host.Mounts)
+	}
+	got := snap.Host.Mounts[0]
+	if got.Source != "/var/lib/mpai-zymctrl/output/run-1" || got.Target != "/job" || got.ReadOnly {
+		t.Fatalf("unexpected task mount: %#v", got)
+	}
+}
+
+func TestStartParamsSnapshot_RejectsRelativeTaskArtifactMount(t *testing.T) {
+	t.Parallel()
+	dck, _ := New(&config.Docker{})
+	task := &model.Task{
+		TaskID:    "55555555-5555-5555-5555-555555555555",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "alpine:3.20",
+		Business:  datatypes.JSON(`{"mounts":[{"host_path":"relative-output","container_path":"/job"}]}`),
+	}
+	_, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err == nil {
+		t.Fatal("want relative task mount rejection")
+	}
+}
