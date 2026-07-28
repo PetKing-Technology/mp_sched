@@ -76,6 +76,50 @@ func TestStartParamsSnapshot_MultiGPUInOneRequest(t *testing.T) {
 	t.Logf("device_ids: %v", ids)
 }
 
+func TestStartParamsSnapshot_PreservesLegacyBusinessMountsAndDockerSocket(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{Mounts: []config.DockerMount{{Name: "static", HostPath: "/mnt/static", MountPath: "/agent/common"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{TaskID: "44444444-4444-4444-4444-444444444444", Provider: "docker", Image: "alpine:3.20", Business: datatypes.JSON(`{"type":"config","config_mode":"app","mounts":[{"host_path":"/provider/common","container_path":"/agent/common","read_only":true},{"source":{"kind":"host_path","ref":"/provider/task"},"target_path":"/agent/task","writable":true}]}`)}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounts := mountMapByTarget(snap.Host.Mounts)
+	if got := mounts["/agent/common"]; got.Source != "/provider/common" || !got.ReadOnly {
+		t.Fatalf("business mount did not override static mount: %#v", got)
+	}
+	if got := mounts["/agent/task"]; got.Source != "/provider/task" || got.ReadOnly {
+		t.Fatalf("business writable mount missing: %#v", got)
+	}
+	if got := mounts["/var/run/docker.sock"]; got.Source != "/var/run/docker.sock" || got.ReadOnly {
+		t.Fatalf("legacy writable docker socket missing: %#v", got)
+	}
+}
+
+func TestStartParamsSnapshot_RejectsUnsupportedLegacyBusinessMountSource(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{TaskID: "55555555-5555-5555-5555-555555555555", Provider: "docker", Image: "alpine:3.20", Business: datatypes.JSON(`{"type":"config","config_mode":"app","mounts":[{"source":{"kind":"s3","ref":"/bucket/key"},"target_path":"/agent/data"}]}`)}
+	_, err = dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err == nil || err.Error() != `docker: business.mounts[0].source.kind must be host_path, got "s3"` {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func mountMapByTarget(mounts []MountSnapshot) map[string]MountSnapshot {
+	out := make(map[string]MountSnapshot, len(mounts))
+	for _, item := range mounts {
+		out[item.Target] = item
+	}
+	return out
+}
+
 func TestStartParamsSnapshot_DedupedDeviceIDsFromMultiset(t *testing.T) {
 	t.Parallel()
 	dck, _ := New(&config.Docker{

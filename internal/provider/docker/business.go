@@ -3,6 +3,8 @@ package docker
 import (
 	"encoding/json"
 	"fmt"
+	containerpath "path"
+	"path/filepath"
 	"strings"
 
 	"mp_sched/internal/model"
@@ -21,6 +23,7 @@ type BusinessSpec struct {
 	Hostname    string   `json:"hostname"`
 	NetworkMode string   `json:"network_mode"`
 	AutoRemove  bool     `json:"auto_remove"`
+	Mounts      []BusinessMount `json:"mounts"`
 
 	// 以下为 type=config（或空，默认）时使用
 	ConfigOSSKey        string `json:"config_oss_key"`
@@ -31,6 +34,19 @@ type BusinessSpec struct {
 	EnvKey   string `json:"env_key"`
 	EnvValue string `json:"env_value"`
 }
+
+type BusinessMount struct {
+	HostPath string `json:"host_path"`
+	ContainerPath string `json:"container_path"`
+	MountPath string `json:"mount_path"`
+	TargetPath string `json:"target_path"`
+	Source BusinessMountSource `json:"source"`
+	ReadOnly *bool `json:"read_only"`
+	Writable *bool `json:"writable"`
+}
+
+type BusinessMountSource struct { Kind string `json:"kind"`; Ref string `json:"ref"` }
+type resolvedBusinessMount struct { HostPath string; ContainerPath string; ReadOnly bool }
 
 func parseBusiness(raw []byte) (BusinessSpec, error) {
 	if len(raw) == 0 {
@@ -68,6 +84,32 @@ func ValidateBusinessPayloadType(spec *BusinessSpec) error {
 		return nil
 	}
 	return fmt.Errorf("docker: business.type must be config, file, or env, got %q", spec.PayloadType)
+}
+
+func resolveBusinessMounts(spec *BusinessSpec) ([]resolvedBusinessMount, error) {
+	if spec == nil || len(spec.Mounts) == 0 { return nil, nil }
+	out := make([]resolvedBusinessMount, 0, len(spec.Mounts))
+	for i, item := range spec.Mounts {
+		hostPath, targetPath, readOnly, empty, err := resolveBusinessMount(i, item)
+		if err != nil { return nil, err }
+		if !empty { out = append(out, resolvedBusinessMount{HostPath: hostPath, ContainerPath: targetPath, ReadOnly: readOnly}) }
+	}
+	return out, nil
+}
+
+func resolveBusinessMount(index int, item BusinessMount) (hostPath, targetPath string, readOnly, empty bool, err error) {
+	kind := strings.ToLower(strings.TrimSpace(item.Source.Kind))
+	if kind != "" && kind != "host_path" { return "", "", false, false, fmt.Errorf("docker: business.mounts[%d].source.kind must be host_path, got %q", index, item.Source.Kind) }
+	hostPath = strings.TrimSpace(item.HostPath)
+	if hostPath == "" { hostPath = strings.TrimSpace(item.Source.Ref) }
+	for _, candidate := range []string{item.ContainerPath, item.TargetPath, item.MountPath} { if targetPath == "" && strings.TrimSpace(candidate) != "" { targetPath = strings.TrimSpace(candidate) } }
+	if hostPath == "" && targetPath == "" { return "", "", false, true, nil }
+	if hostPath == "" { return "", "", false, false, fmt.Errorf("docker: business.mounts[%d] requires host_path or source.ref", index) }
+	if targetPath == "" { return "", "", false, false, fmt.Errorf("docker: business.mounts[%d] requires container_path or target_path", index) }
+	if !filepath.IsAbs(hostPath) { return "", "", false, false, fmt.Errorf("docker: business.mounts[%d].host_path must be absolute, got %q", index, hostPath) }
+	if !containerpath.IsAbs(targetPath) { return "", "", false, false, fmt.Errorf("docker: business.mounts[%d].container_path must be absolute, got %q", index, targetPath) }
+	if item.ReadOnly != nil { readOnly = *item.ReadOnly } else if item.Writable != nil { readOnly = !*item.Writable }
+	return hostPath, targetPath, readOnly, false, nil
 }
 
 // ConfigFetchByWorker 是否由 worker 从 OSS 下载并 bind（仅 type=config 且 config_mode=worker）

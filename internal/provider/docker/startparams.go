@@ -200,7 +200,7 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 			if h == "" || p == "" {
 				continue
 			}
-			mnts = append(mnts, mount.Mount{
+			mnts = appendOrReplaceMount(mnts, mount.Mount{
 				Type:     mount.TypeBind,
 				Source:   h,
 				Target:   p,
@@ -208,18 +208,24 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 			})
 		}
 	}
+	businessMounts, err := resolveBusinessMounts(&spec)
+	if err != nil { return "", nil, nil, err }
+	for _, item := range businessMounts {
+		mnts = appendOrReplaceMount(mnts, mount.Mount{Type: mount.TypeBind, Source: item.HostPath, Target: item.ContainerPath, ReadOnly: item.ReadOnly})
+	}
 	if ConfigFetchByWorker(&spec) && strings.TrimSpace(spec.ConfigOSSKey) != "" {
 		local, err := c.downloadFromOSS(ctx, t.TaskID, spec.ConfigOSSKey)
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("oss download: %w", err)
 		}
-		mnts = append(mnts, mount.Mount{
+		mnts = appendOrReplaceMount(mnts, mount.Mount{
 			Type:     mount.TypeBind,
 			Source:   local,
 			Target:   c.configContainerPath(&spec),
 			ReadOnly: true,
 		})
 	}
+	mnts = appendOrReplaceMount(mnts, mount.Mount{Type: mount.TypeBind, Source: "/var/run/docker.sock", Target: "/var/run/docker.sock", ReadOnly: false})
 	nano, err := parseNanoCPUs(t.ResCPU)
 	if err != nil {
 		return "", nil, nil, err
@@ -265,4 +271,10 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 	}
 	name = containerName(t.TaskID)
 	return name, cfg, hostCfg, nil
+}
+
+func appendOrReplaceMount(mounts []mount.Mount, next mount.Mount) []mount.Mount {
+	if strings.TrimSpace(next.Target) == "" { return mounts }
+	for i := range mounts { if strings.TrimSpace(mounts[i].Target) == strings.TrimSpace(next.Target) { mounts[i] = next; return mounts } }
+	return append(mounts, next)
 }

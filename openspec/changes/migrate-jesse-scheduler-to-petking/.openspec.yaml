@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-07-28
+goal: Replace JesseEisen mp_sched with a reviewed PetKing scheduler baseline
+  before enabling signed callback v2.
