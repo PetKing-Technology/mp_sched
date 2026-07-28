@@ -164,6 +164,10 @@ func (c *Client) deliver(ctx context.Context, row *model.CallbackDelivery) {
 	if json.Unmarshal(row.Headers, &headers) != nil {
 		return
 	}
+	// PostgreSQL jsonb may canonicalize the persisted JSON representation.
+	// Bind the scheduler-owned integrity headers to the exact bytes that will
+	// be sent, while retaining the original receipt identity for idempotency.
+	c.rebindV2Headers(headers, row.Body)
 	req, err := http.NewRequestWithContext(ctx, row.Method, row.URL, bytes.NewReader(row.Body))
 	if err != nil {
 		return
@@ -253,6 +257,22 @@ func (c *Client) v2Headers(meta callbackMeta, body []byte) http.Header {
 	headers.Set(headerContentSHA256, bodySHA)
 	headers.Set(headerSignature, sign(c.cfg.Auth.HMACSecret, c.cfg.Auth.KeyID, meta.DeliveryID, meta.OccurredAt, bodySHA))
 	return headers
+}
+
+func (c *Client) rebindV2Headers(headers http.Header, body []byte) {
+	if c == nil || c.cfg == nil || !c.cfg.Auth.Enabled() {
+		return
+	}
+	meta := callbackMeta{
+		DeliveryID: headers.Get(headerDeliveryID),
+		OccurredAt:  headers.Get(headerOccurredAt),
+	}
+	for name, values := range c.v2Headers(meta, body) {
+		headers.Del(name)
+		for _, value := range values {
+			headers.Add(name, value)
+		}
+	}
 }
 
 func sign(secret, keyID, deliveryID, occurredAt, bodySHA string) string {
