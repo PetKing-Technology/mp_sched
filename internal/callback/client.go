@@ -80,6 +80,7 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 		body["protocol_version"] = protocolVersion
 		body["delivery_id"] = meta.DeliveryID
 		body["occurred_at"] = meta.OccurredAt
+		c.addControlledAuthority(body, event, t)
 		c.addArtifactBinding(body, event, t)
 	}
 	encoded, err := json.Marshal(body)
@@ -106,6 +107,49 @@ func (c *Client) Fire(ctx context.Context, event string, t *model.Task) {
 		return
 	}
 	c.send(ctx, req)
+}
+
+// addControlledAuthority copies the non-secret controlled-run correlation set
+// out of the persisted scheduler business document.  The signed callback is
+// still verified and cross-checked against Runtime's durable run registry;
+// this echo prevents an otherwise valid callback for one protected attempt
+// from being silently interpreted as another attempt.
+func (c *Client) addControlledAuthority(body map[string]any, event string, task *model.Task) {
+	if task == nil {
+		return
+	}
+	var business struct {
+		AgentRT struct {
+			ControlledCallback *struct {
+				TenantID string `json:"tenant_id"`
+				Generation string `json:"generation"`
+				TaskID string `json:"task_id"`
+				WorkUnitID string `json:"work_unit_id"`
+				RunID string `json:"run_id"`
+				Attempt int `json:"attempt"`
+				FencingToken string `json:"fencing_token"`
+				ArtifactContract string `json:"artifact_contract"`
+			} `json:"controlled_callback"`
+		} `json:"agent_rt"`
+	}
+	if json.Unmarshal(task.Business, &business) != nil || business.AgentRT.ControlledCallback == nil {
+		return
+	}
+	value := business.AgentRT.ControlledCallback
+	if value.TenantID == "" || value.Generation == "" || value.TaskID == "" ||
+		value.WorkUnitID == "" || value.RunID == "" || value.Attempt < 1 ||
+		value.FencingToken == "" || value.ArtifactContract != "sequence_bundle/v1" {
+		return
+	}
+	body["tenant_id"] = value.TenantID
+	body["generation"] = value.Generation
+	body["task_id"] = value.TaskID
+	body["work_unit_id"] = value.WorkUnitID
+	body["run_id"] = value.RunID
+	body["attempt"] = value.Attempt
+	body["fencing_token"] = value.FencingToken
+	body["scheduler_job_id"] = task.TaskID
+	body["terminal_status"] = event
 }
 
 func terminal(event string) bool {

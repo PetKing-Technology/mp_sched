@@ -18,6 +18,7 @@ import (
 	"mp_sched/internal/config"
 	"mp_sched/internal/database"
 	"mp_sched/internal/model"
+	"gorm.io/datatypes"
 )
 
 func TestAuthenticatedTerminalDeliveryPersistsAndRetriesAfterRestart(t *testing.T) {
@@ -159,6 +160,31 @@ func TestV2DeliverySignsExactBodyAndUsesFreshReceipt(t *testing.T) {
 	if first.header.Get("X-MP-Sched-Delivery-Id") == second.header.Get("X-MP-Sched-Delivery-Id") {
 		t.Fatal("two delivery attempts reused the same delivery id")
 	}
+}
+
+func TestV2ControlledCompletionCarriesSignedAuthorityEnvelope(t *testing.T) {
+	srv, captured := captureServer(t)
+	defer srv.Close()
+	task := testTask()
+	task.Business = datatypes.JSON([]byte(`{"agent_rt":{"controlled_callback":{
+		"tenant_id":"tenant-z","generation":"laccm_zymctrl_v2_001",
+		"task_id":"runtime-task-z","work_unit_id":"wu-z","run_id":"run-z",
+		"attempt":3,"fencing_token":"fence-z","artifact_contract":"sequence_bundle/v1"
+	}}}`))
+	New(&config.Callback{Enable: true, URL: srv.URL,
+		Auth: config.CallbackAuth{KeyID: "fixture-k1", HMACSecret: "fixture-secret"},
+	}).Fire(t.Context(), EventSucceeded, task)
+	var payload map[string]any
+	if err := json.Unmarshal(captured().body, &payload); err != nil { t.Fatal(err) }
+	for name, want := range map[string]any{
+		"tenant_id":"tenant-z", "generation":"laccm_zymctrl_v2_001",
+		"task_id":"runtime-task-z", "work_unit_id":"wu-z", "run_id":"run-z",
+		"attempt":float64(3), "fencing_token":"fence-z",
+		"scheduler_job_id":"scheduler-job-1", "terminal_status":EventSucceeded,
+	} {
+		if payload[name] != want { t.Fatalf("%s = %#v, want %#v", name, payload[name], want) }
+	}
+	if payload["delivery_id"] == "" || payload["occurred_at"] == "" { t.Fatalf("delivery envelope missing: %#v", payload) }
 }
 
 func TestV2ReservedHeadersOverrideStaticValues(t *testing.T) {
