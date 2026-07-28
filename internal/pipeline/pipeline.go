@@ -165,15 +165,15 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 			if e != nil {
 				return e
 			}
-			if err := docker.CheckDockerGPUOccupancyWithCandidate(p.Cfg.Docker.HostResources, occ, tt); err != nil {
-				return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
-			}
+			gpuID, err := docker.AssignNVIDIADeviceIDForTask(p.Cfg.Docker.HostResources, occ, tt)
+			if err != nil { return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err) }
+			if gpuID != "" { extra, err := docker.ExtraWithAssignedNVIDIAGPUID(tt.Extra, gpuID); if err != nil { return err }; tt.Extra = datatypes.JSON(extra) }
 		}
-		ok, e := r2.TrySetStatusWithDB(tx, t.TaskID, model.TaskStatusProcessing, model.TaskStatusAdmitted)
-		if e != nil {
-			return e
-		}
-		if !ok {
+		updates := map[string]any{"status": model.TaskStatusAdmitted}
+		if len(tt.Extra) > 0 { updates["extra"] = tt.Extra }
+		result := tx.Model(&model.Task{}).Where("task_id = ? AND status = ?", t.TaskID, model.TaskStatusProcessing).Updates(updates)
+		if result.Error != nil { return result.Error }
+		if result.RowsAffected != 1 {
 			return errors.New("pipeline: status CAS failed")
 		}
 		return nil

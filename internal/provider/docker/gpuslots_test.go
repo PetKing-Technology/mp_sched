@@ -19,6 +19,16 @@ func TestTaskWantsGPU(t *testing.T) {
 	}
 }
 
+func TestAssignNVIDIADeviceIDForTaskUsesFirstFreeSlot(t *testing.T) {
+	host := config.DockerHostResources{GPUIDs: []string{"GPU-0", "GPU-0", "GPU-1"}}
+	first, err := AssignNVIDIADeviceIDForTask(host, nil, &model.Task{TaskID: "first", ResGPU: "true"})
+	if err != nil || first != "GPU-0" { t.Fatalf("first=%q err=%v", first, err) }
+	extra, err := ExtraWithAssignedNVIDIAGPUID([]byte(`{}`), first)
+	if err != nil { t.Fatal(err) }
+	second, err := AssignNVIDIADeviceIDForTask(host, []model.Task{{TaskID: "first", ResGPU: "true", Extra: extra}}, &model.Task{TaskID: "second", ResGPU: "true"})
+	if err != nil || second != "GPU-0" { t.Fatalf("second=%q err=%v", second, err) }
+}
+
 // 同一 id 在 gpu_ids 出现两次 = 两路并发槽；单任务挂载去重后只占 GPU-0 一槽调度记账
 func TestTaskGPUSlotNeed_OneSlotPerTaskOnDedupedAttach(t *testing.T) {
 	hostCap := map[string]int{"GPU-0": 2}

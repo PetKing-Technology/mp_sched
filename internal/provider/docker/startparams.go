@@ -238,7 +238,8 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 	if c.cfg != nil {
 		hr = &c.cfg.HostResources
 	}
-	hostCfg = &container.HostConfig{
+	assignedGPU := AssignedNVIDIAGPUID(t)
+	if assignedGPU != "" { hostCfg = &container.HostConfig{Resources: container.Resources{NanoCPUs: nano, Memory: mem, DeviceRequests: []container.DeviceRequest{{Driver: "nvidia", DeviceIDs: []string{assignedGPU}, Capabilities: [][]string{{"gpu"}}}}}, Mounts: mnts, AutoRemove: spec.AutoRemove} } else { hostCfg = &container.HostConfig{
 		Resources: container.Resources{
 			NanoCPUs:       nano,
 			Memory:         mem,
@@ -246,7 +247,7 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 		},
 		Mounts:     mnts,
 		AutoRemove: spec.AutoRemove,
-	}
+	} }
 	if nm := strings.TrimSpace(spec.NetworkMode); nm != "" {
 		hostCfg.NetworkMode = container.NetworkMode(nm)
 	}

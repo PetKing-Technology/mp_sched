@@ -1,12 +1,51 @@
 package docker
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"mp_sched/internal/config"
 	"mp_sched/internal/model"
 )
+
+const extraDockerGPUIDKey = "docker_gpu_id"
+
+func AssignedNVIDIAGPUID(task *model.Task) string {
+	if task == nil || len(task.Extra) == 0 { return "" }
+	var values map[string]any
+	if err := json.Unmarshal(task.Extra, &values); err != nil { return "" }
+	value, _ := values[extraDockerGPUIDKey].(string)
+	return strings.TrimSpace(value)
+}
+
+func ExtraWithAssignedNVIDIAGPUID(raw []byte, id string) ([]byte, error) {
+	values := map[string]any{}
+	if len(raw) > 0 && strings.TrimSpace(string(raw)) != "" {
+		if err := json.Unmarshal(raw, &values); err != nil { return nil, fmt.Errorf("docker: parse task extra: %w", err) }
+	}
+	if id = strings.TrimSpace(id); id == "" { delete(values, extraDockerGPUIDKey) } else { values[extraDockerGPUIDKey] = id }
+	encoded, err := json.Marshal(values)
+	if err != nil { return nil, fmt.Errorf("docker: encode task extra: %w", err) }
+	return encoded, nil
+}
+
+func AssignNVIDIADeviceIDForTask(host config.DockerHostResources, occupying []model.Task, candidate *model.Task) (string, error) {
+	if candidate == nil || !TaskWantsGPU(candidate.ResGPU) { return "", nil }
+	slots := TrimGPUIDList(host.GPUIDs)
+	if len(slots) == 0 { return "", fmt.Errorf("docker: GPU requested but host_resources.gpu_ids is empty") }
+	for i := range occupying {
+		if !TaskWantsGPU(occupying[i].ResGPU) { continue }
+		id := AssignedNVIDIAGPUID(&occupying[i])
+		if id == "" { id = slots[0] }
+		found := -1
+		for j, slot := range slots { if slot == id { found = j; break } }
+		if found < 0 { return "", fmt.Errorf("docker: gpu slots exhausted for %q (task_id=%s)", id, occupying[i].TaskID) }
+		slots = append(slots[:found], slots[found+1:]...)
+	}
+	if len(slots) == 0 { return "", fmt.Errorf("docker: no available GPU device id for task_id=%s", candidate.TaskID) }
+	return slots[0], nil
+}
 
 // TrimGPUIDList 从配置读取的 gpu_ids 去空白、丢弃空串，保留重复项（每一项对应一个可分配槽位）。
 func TrimGPUIDList(ids []string) []string {
