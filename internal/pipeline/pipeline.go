@@ -174,14 +174,18 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 			if policy := p.Cfg.Docker.GPUAdmission; policy.Enable {
 				inventory, err := docker.QueryNVIDIAGPUs(ctx, time.Duration(policy.QueryTimeoutSeconds)*time.Second)
 				if err != nil {
-					slog.Info("docker gpu inventory unavailable", "task_id", tt.TaskID, "reason", err.Error())
+					if shouldLogGPUAdmissionAttempt(tt.ScheduleAttempts) {
+						slog.Info("docker gpu inventory unavailable", "task_id", tt.TaskID, "reason", err.Error())
+					}
 					return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
 				}
 				gpuID, err = docker.AssignOpportunisticNVIDIADeviceID(
 					p.Cfg.Docker.HostResources, policy, occ, tt, inventory, time.Now().UTC(),
 				)
 				if err != nil {
-					slog.Info("docker gpu not admitted", "task_id", tt.TaskID, "reason", err.Error())
+					if shouldLogGPUAdmissionAttempt(tt.ScheduleAttempts) {
+						slog.Info("docker gpu not admitted", "task_id", tt.TaskID, "reason", err.Error())
+					}
 					return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
 				}
 			} else {
@@ -258,6 +262,11 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 	}
 	p.fire(ctx, callback.EventRunning, t2.TaskID)
 	return nil
+}
+
+func shouldLogGPUAdmissionAttempt(scheduleAttempts int) bool {
+	// 默认 2 秒重试：首次记录，此后每 30 次（约 60 秒）记录一次。
+	return scheduleAttempts <= 0 || scheduleAttempts%30 == 0
 }
 
 func (p *Pipeline) executeStop(ctx context.Context, t *model.Task) error {
