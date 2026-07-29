@@ -312,6 +312,16 @@ components:
         status:
           type: string
           enum: [pending, processing, admitted, running, succeeded, failed, stopped]
+        pending_reason:
+          type: string
+          description: 最近一次准入失败原因，仅 pending 时有意义
+        next_schedule_at:
+          type: string
+          format: date-time
+          description: 该 pending 任务下次可参与扫描的 UTC 时间
+        schedule_attempts:
+          type: integer
+          description: 准入失败并延后重扫的累计次数
         running_at:
           type: string
           format: date-time

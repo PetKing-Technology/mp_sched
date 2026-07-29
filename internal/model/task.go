@@ -68,6 +68,11 @@ type Task struct {
 
 	Status string `gorm:"type:text;not null;index" json:"status"`
 
+	// PendingReason/NextScheduleAt 支持准入失败后延迟重扫，让后续可运行任务回填。
+	PendingReason    string     `gorm:"type:text" json:"pending_reason,omitempty"`
+	NextScheduleAt   *time.Time `gorm:"index" json:"next_schedule_at,omitempty"`
+	ScheduleAttempts int        `gorm:"default:0" json:"schedule_attempts,omitempty"`
+
 	// RuntimeRef Provider 侧引用（容器 ID、Job 名等）
 	RuntimeRef string `gorm:"type:text" json:"runtime_ref,omitempty"`
 

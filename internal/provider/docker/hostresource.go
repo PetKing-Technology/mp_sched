@@ -10,7 +10,7 @@ import (
 )
 
 // validateTaskHostResources 将 task 的 res_cpu/res_memory 与 [docker.host_resources] 本机上限比对；
-// 若任务需要 GPU，校验 gpu_ids 去重后能解析出合法挂载且 id 均在槽位表中。
+// 若任务需要 GPU，校验 gpu_ids 已配置；若已有分配结果，则校验分配 id 在槽位表中。
 // GPU 多任务并发占用由 pipeline 在 admit 事务内 CheckDockerGPUOccupancyWithCandidate 汇总校验。
 // 若 max_cpu、max_memory 均未配置且无 GPU 请求，且不触发 GPU 校验，则可能直接 nil。
 func validateTaskHostResources(t *model.Task, cfg *config.Docker) *provider.ResourceCheckResult {
@@ -51,16 +51,21 @@ func validateTaskHostResources(t *model.Task, cfg *config.Docker) *provider.Reso
 		}
 	}
 	if TaskWantsGPU(t.ResGPU) {
-		hostCap := HostGPUSlotCapacity(hr.GPUIDs)
-		if len(hostCap) == 0 {
+		ids := TrimGPUIDList(hr.GPUIDs)
+		if len(ids) == 0 {
 			return &provider.ResourceCheckResult{OK: false, Reason: "docker: GPU requested but host_resources.gpu_ids is empty"}
 		}
-		attach, err := ResolveNVIDIADeviceIDsForAttach(&hr)
-		if err != nil {
-			return &provider.ResourceCheckResult{OK: false, Reason: err.Error()}
-		}
-		if _, err := gpuSlotNeedFromAttach(hostCap, attach); err != nil {
-			return &provider.ResourceCheckResult{OK: false, Reason: err.Error()}
+		if id := AssignedNVIDIAGPUID(t); id != "" {
+			found := false
+			for _, hostID := range ids {
+				if hostID == id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return &provider.ResourceCheckResult{OK: false, Reason: fmt.Sprintf("docker: assigned GPU %q not in host_resources.gpu_ids", id)}
+			}
 		}
 	}
 	return nil

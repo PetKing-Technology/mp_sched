@@ -45,6 +45,7 @@ callback:
 
 worker:
   poll_ms: 200
+  not_admitted_retry_ms: 2000
   admitted_timeout_seconds: 0
   default_max_runtime_seconds: 3600
   runtime_sweeper_interval_seconds: 300
@@ -94,6 +95,13 @@ docker:
     # access_key: ""
     # secret_key: ""
     # use_ssl: true
+  # 机会式 GPU 准入：不为任务分配固定显存；实际空闲至少 20GiB + 10GiB 余量才启动。
+  gpu_admission:
+    enable: true
+    min_start_free_memory_mb: 20480
+    reserve_memory_mb: 10240
+    launch_guard_seconds: 120
+    query_timeout_seconds: 3
   # 本机资源上限（CPU/内存走 ResourceCheck）
   # gpu_ids：多重集 = 各卡并发槽数；任务要 GPU 时按首次出现顺序去重写入 DeviceRequests
   # host_resources:

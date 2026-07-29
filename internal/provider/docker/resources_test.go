@@ -3,30 +3,26 @@ package docker
 import (
 	"testing"
 
-	"mp_sched/internal/config"
-
 	"github.com/docker/docker/api/types/container"
 )
 
 func TestGpuDeviceRequestsForTask_Off(t *testing.T) {
-	hr := &config.DockerHostResources{GPUIDs: []string{"GPU-0"}}
-	if req := gpuDeviceRequestsForTask("false", hr); req != nil {
+	if req := gpuDeviceRequestsForTask("false", "GPU-0"); req != nil {
 		t.Fatalf("%#v", req)
 	}
 }
 
 func TestGpuDeviceRequestsForTask_On(t *testing.T) {
-	hr := &config.DockerHostResources{GPUIDs: []string{"GPU-0", "GPU-1"}}
-	req := gpuDeviceRequestsForTask("true", hr)
-	if len(req) != 1 || len(req[0].DeviceIDs) != 2 {
+	req := gpuDeviceRequestsForTask("true", "GPU-1")
+	if len(req) != 1 || len(req[0].DeviceIDs) != 1 {
 		t.Fatalf("%+v", req)
 	}
 	want := container.DeviceRequest{
 		Driver:       "nvidia",
 		Capabilities: [][]string{{"gpu"}},
-		DeviceIDs:    []string{"GPU-0", "GPU-1"},
+		DeviceIDs:    []string{"GPU-1"},
 	}
-	if req[0].Driver != want.Driver || len(req[0].DeviceIDs) != 2 {
+	if req[0].Driver != want.Driver || req[0].DeviceIDs[0] != want.DeviceIDs[0] {
 		t.Fatalf("%+v", req[0])
 	}
 }

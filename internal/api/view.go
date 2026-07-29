@@ -22,6 +22,9 @@ type taskView struct {
 	MaxRuntimeSeconds int             `json:"max_runtime_seconds,omitempty"`
 	Image             string          `json:"image,omitempty"`
 	Status            string          `json:"status"`
+	PendingReason     string          `json:"pending_reason,omitempty"`
+	NextScheduleAt    string          `json:"next_schedule_at,omitempty"`
+	ScheduleAttempts  int             `json:"schedule_attempts,omitempty"`
 	RunningAt         string          `json:"running_at,omitempty"`
 	RuntimeRef        string          `json:"runtime_ref,omitempty"`
 	CreatedAt         string          `json:"created_at"`
@@ -49,12 +52,17 @@ func taskToView(t *model.Task) taskView {
 		MaxRuntimeSeconds: t.MaxRuntimeSeconds,
 		Image:             t.Image,
 		Status:            t.Status,
+		PendingReason:     t.PendingReason,
+		ScheduleAttempts:  t.ScheduleAttempts,
 		RuntimeRef:        t.RuntimeRef,
 		CreatedAt:         t.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:         t.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if t.RunningAt != nil {
 		out.RunningAt = t.RunningAt.UTC().Format(time.RFC3339)
+	}
+	if t.NextScheduleAt != nil {
+		out.NextScheduleAt = t.NextScheduleAt.UTC().Format(time.RFC3339)
 	}
 	return out
 }

@@ -24,7 +24,8 @@ callback:
   timeout_seconds: 10
 
 worker:
-  poll_ms: 15000 
+  poll_ms: 15000
+  not_admitted_retry_ms: 2000
   admitted_timeout_seconds: 0
   allowed_providers: []
   default_max_runtime_seconds: 3600
@@ -61,6 +62,13 @@ docker:
       mount_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
   oss:
     enable: false
+  # 机会式 GPU 准入：不为任务分配固定显存；实际空闲至少 20GiB + 10GiB 余量才启动。
+  gpu_admission:
+    enable: true
+    min_start_free_memory_mb: 20480
+    reserve_memory_mb: 10240
+    launch_guard_seconds: 120
+    query_timeout_seconds: 3
   # 可选本机资源上限，与 task.res_* 校验；取消注释时与上方 docker 同一块，勿重复 docker: 根键
   host_resources:
     max_cpu: "64"

@@ -271,6 +271,9 @@ stop（也可使用下方便捷接口）：
 | `max_runtime_seconds` | int | 任务级运行上限（>0 限时；0 用默认；<0 不限） |
 | `image` | string | 容器镜像 |
 | `status` | string | 见状态表 |
+| `pending_reason` | string | 最近一次准入失败原因，仅 pending 时有意义 |
+| `next_schedule_at` | string | 下次可参与调度扫描的 UTC 时间 |
+| `schedule_attempts` | int | 准入失败并延后重扫的累计次数 |
 | `running_at` | string | 进入 `running` 的 UTC 时间（RFC3339）；运行超时扫描以此为起点 |
 | `runtime_ref` | string | provider 返回的引用（容器 ID 等） |
 | `created_at` / `updated_at` | string | RFC3339 UTC |

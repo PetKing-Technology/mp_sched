@@ -110,6 +110,8 @@ type Worker struct {
 	AdmittedTimeoutSeconds int `mapstructure:"admitted_timeout_seconds" yaml:"admitted_timeout_seconds"`
 	// AllowedProviders 非空时只抢占这些 provider 的 pending（多 worker 分片）；空=全部
 	AllowedProviders []string `mapstructure:"allowed_providers" yaml:"allowed_providers"`
+	// NotAdmittedRetryMS 准入失败后再次扫描该任务的最短间隔；期间 worker 可回填后续 pending 任务。
+	NotAdmittedRetryMS int `mapstructure:"not_admitted_retry_ms" yaml:"not_admitted_retry_ms"`
 	// DefaultMaxRuntimeSeconds 任务 max_runtime_seconds 为 0 时的默认运行上限（自 running 起算）；0 表示默认不限（仅任务侧显式正数仍限时）。典型 3600。
 	DefaultMaxRuntimeSeconds int `mapstructure:"default_max_runtime_seconds" yaml:"default_max_runtime_seconds"`
 	// RuntimeSweeperIntervalSeconds 检查 running 超时并强杀的周期（秒）；≤0 时 ApplyDefaults 补默认 300。
@@ -134,16 +136,27 @@ type Docker struct {
 	ConfigFileContainerPath string              `mapstructure:"config_file_container_path" yaml:"config_file_container_path"`
 	ImagePull               DockerImagePull     `mapstructure:"image_pull" yaml:"image_pull"`
 	HostResources           DockerHostResources `mapstructure:"host_resources" yaml:"host_resources"`
+	GPUAdmission            DockerGPUAdmission  `mapstructure:"gpu_admission" yaml:"gpu_admission"`
 	Mounts                  []DockerMount       `mapstructure:"mounts" yaml:"mounts"`
 	OSS                     DockerOSS           `mapstructure:"oss" yaml:"oss"`
 }
 
-// DockerHostResources 本机上限；GPU 槽位在 pipeline 与 HostGPUSlotCapacity 中按 gpu_ids 重复次数统计。全空则不做对应校验
+// DockerGPUAdmission 控制基于 nvidia-smi 实际空闲显存的机会式 GPU 准入。
+// 它不为任务设置显存配额；阈值只决定是否允许启动。
+type DockerGPUAdmission struct {
+	Enable               bool `mapstructure:"enable" yaml:"enable"`
+	MinStartFreeMemoryMB int  `mapstructure:"min_start_free_memory_mb" yaml:"min_start_free_memory_mb"`
+	ReserveMemoryMB      int  `mapstructure:"reserve_memory_mb" yaml:"reserve_memory_mb"`
+	LaunchGuardSeconds   int  `mapstructure:"launch_guard_seconds" yaml:"launch_guard_seconds"`
+	QueryTimeoutSeconds  int  `mapstructure:"query_timeout_seconds" yaml:"query_timeout_seconds"`
+}
+
+// DockerHostResources 本机上限。机会式模式下 gpu_ids 是允许设备集合；关闭后为固定槽位多重集。
 type DockerHostResources struct {
 	MaxCPU    string `mapstructure:"max_cpu" yaml:"max_cpu"`
 	MaxMemory string `mapstructure:"max_memory" yaml:"max_memory"`
-	// GPUIDs 每个元素是一槽；同一 device id 写 n 次表示该卡上至多 n 路并发「需要 GPU」的任务。
-	// 任务开启 GPU 时，容器 DeviceRequests 使用本列表按首次出现顺序去重后的 device id（每个 id 在容器里挂一次；槽位仍按多重集计数）。
+	// GPUIDs 在机会式模式下会去重并作为允许设备集合；关闭机会式模式后，每个元素是一槽。
+	// 任务开启 GPU 时，admit 阶段只分配一个 id，容器 DeviceRequests 只挂该设备。
 	GPUIDs []string `mapstructure:"gpu_ids" yaml:"gpu_ids"`
 }
 
@@ -203,22 +216,30 @@ func Default() *App {
 		},
 		Controller: Controller{HTTP: HTTPCtrl{Enable: false, Addr: ""}},
 		Callback:   Callback{Enable: false, Method: "POST", TimeoutSeconds: 10, Headers: nil},
-		Worker:     Worker{PollMS: 200, AdmittedTimeoutSeconds: 0, DefaultMaxRuntimeSeconds: 3600, RuntimeSweeperIntervalSeconds: 300},
+		Worker:     Worker{PollMS: 200, NotAdmittedRetryMS: 2000, AdmittedTimeoutSeconds: 0, DefaultMaxRuntimeSeconds: 3600, RuntimeSweeperIntervalSeconds: 300},
 		Reconciler: Reconciler{Enable: false, IntervalSeconds: 10, OrphanReapWaitsS: []int{5, 15, 30}},
 		ClickHouse: ClickHouse{
 			Enable: false, Address: "127.0.0.1:9000", Database: "default",
 			User: DefaultClickHouseUser, Password: DefaultClickHousePassword,
 		},
 		Telemetry: Telemetry{
-			SlogToClickHouse:               false,
-			DockerStatsIntervalSeconds:     0,
-			DockerLogIntervalSeconds:       0,
-			DockerLogTailLines:             500,
-			DockerLogTerminalFlushLines:    20000,
-			LogBatchSize:                   200,
-			LogBatchFlushMS:                2000,
+			SlogToClickHouse:            false,
+			DockerStatsIntervalSeconds:  0,
+			DockerLogIntervalSeconds:    0,
+			DockerLogTailLines:          500,
+			DockerLogTerminalFlushLines: 20000,
+			LogBatchSize:                200,
+			LogBatchFlushMS:             2000,
 		},
-		Docker: Docker{Mounts: nil},
+		Docker: Docker{
+			Mounts: nil,
+			GPUAdmission: DockerGPUAdmission{
+				MinStartFreeMemoryMB: 20 * 1024,
+				ReserveMemoryMB:      10 * 1024,
+				LaunchGuardSeconds:   120,
+				QueryTimeoutSeconds:  3,
+			},
+		},
 	}
 }
 
@@ -254,6 +275,9 @@ func (a *App) ApplyDefaults() {
 	if a.Worker.PollMS <= 0 {
 		a.Worker.PollMS = d.Worker.PollMS
 	}
+	if a.Worker.NotAdmittedRetryMS <= 0 {
+		a.Worker.NotAdmittedRetryMS = d.Worker.NotAdmittedRetryMS
+	}
 	if a.Worker.AdmittedTimeoutSeconds < 0 {
 		a.Worker.AdmittedTimeoutSeconds = d.Worker.AdmittedTimeoutSeconds
 	}
@@ -271,6 +295,18 @@ func (a *App) ApplyDefaults() {
 	}
 	if strings.TrimSpace(a.Docker.ConfigFileContainerPath) == "" {
 		a.Docker.ConfigFileContainerPath = "/etc/mp_sched/config.json"
+	}
+	if a.Docker.GPUAdmission.MinStartFreeMemoryMB <= 0 {
+		a.Docker.GPUAdmission.MinStartFreeMemoryMB = d.Docker.GPUAdmission.MinStartFreeMemoryMB
+	}
+	if a.Docker.GPUAdmission.ReserveMemoryMB <= 0 {
+		a.Docker.GPUAdmission.ReserveMemoryMB = d.Docker.GPUAdmission.ReserveMemoryMB
+	}
+	if a.Docker.GPUAdmission.LaunchGuardSeconds <= 0 {
+		a.Docker.GPUAdmission.LaunchGuardSeconds = d.Docker.GPUAdmission.LaunchGuardSeconds
+	}
+	if a.Docker.GPUAdmission.QueryTimeoutSeconds <= 0 {
+		a.Docker.GPUAdmission.QueryTimeoutSeconds = d.Docker.GPUAdmission.QueryTimeoutSeconds
 	}
 	if a.ClickHouse.Address == "" {
 		a.ClickHouse.Address = d.ClickHouse.Address

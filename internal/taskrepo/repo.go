@@ -199,18 +199,26 @@ func (r *Repo) ClaimNext(ctx context.Context, providers []string) (*model.Task, 
 		q := tx.
 			Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Where("status = ?", model.TaskStatusPending)
+		q = q.Where("(next_schedule_at IS NULL OR next_schedule_at <= ?)", time.Now().UTC())
 		if len(providers) > 0 {
 			q = q.Where("provider IN ?", providers)
 		}
-		if err := q.
+		queryRes := q.
+			Order("COALESCE(next_schedule_at, created_at) ASC").
 			Order("created_at ASC").
-			First(&t).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return gorm.ErrRecordNotFound
-			}
-			return err
+			Limit(1).
+			Find(&t)
+		if queryRes.Error != nil {
+			return queryRes.Error
 		}
-		res := tx.Model(&model.Task{}).Where("task_id = ? AND status = ?", t.TaskID, model.TaskStatusPending).Update("status", model.TaskStatusProcessing)
+		if queryRes.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		res := tx.Model(&model.Task{}).Where("task_id = ? AND status = ?", t.TaskID, model.TaskStatusPending).Updates(map[string]any{
+			"status":           model.TaskStatusProcessing,
+			"next_schedule_at": nil,
+			"pending_reason":   "",
+		})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -218,6 +226,8 @@ func (r *Repo) ClaimNext(ctx context.Context, providers []string) (*model.Task, 
 			return gorm.ErrRecordNotFound
 		}
 		t.Status = model.TaskStatusProcessing
+		t.NextScheduleAt = nil
+		t.PendingReason = ""
 		out = &t
 		return nil
 	})
@@ -233,6 +243,39 @@ func (r *Repo) ResetToPending(taskID string) error {
 		return errors.New("taskrepo: empty task_id")
 	}
 	return r.DB.Model(&model.Task{}).Where("task_id = ? AND status = ?", taskID, model.TaskStatusProcessing).Update("status", model.TaskStatusPending).Error
+}
+
+// DeferToPending 将准入失败的 processing 任务延后再扫；保留 created_at，因此不会改变原始排队顺序。
+func (r *Repo) DeferToPending(taskID, reason string, delay time.Duration) error {
+	if r == nil || r.DB == nil {
+		return errors.New("taskrepo: nil db")
+	}
+	if taskID == "" {
+		return errors.New("taskrepo: empty task_id")
+	}
+	if delay <= 0 {
+		delay = 2 * time.Second
+	}
+	next := time.Now().UTC().Add(delay)
+	return r.DB.Model(&model.Task{}).
+		Where("task_id = ? AND status = ?", taskID, model.TaskStatusProcessing).
+		Updates(map[string]any{
+			"status":            model.TaskStatusPending,
+			"pending_reason":    reason,
+			"next_schedule_at":  next,
+			"schedule_attempts": gorm.Expr("schedule_attempts + 1"),
+		}).Error
+}
+
+// LockDockerGPUAdmissionWithDB 串行化同一数据库下的 Docker GPU 选卡，防止多 worker 同时看到同一份空闲显存。
+func (r *Repo) LockDockerGPUAdmissionWithDB(db *gorm.DB) error {
+	if db == nil {
+		return errors.New("taskrepo: nil db")
+	}
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+	return db.Exec("SELECT pg_advisory_xact_lock(?)", int64(71007290729)).Error
 }
 
 // WithTx 事务

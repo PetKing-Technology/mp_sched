@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"mp_sched/internal/config"
-
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-units"
 )
@@ -56,19 +54,19 @@ func parseMemoryBytes(s string) (int64, error) {
 	return n, nil
 }
 
-// gpuDeviceRequestsForTask 在任务需要 GPU 时用 host_resources 解析出的 id 构造 NVIDIA DeviceRequest。
-func gpuDeviceRequestsForTask(resGPU string, hr *config.DockerHostResources) []container.DeviceRequest {
+// gpuDeviceRequestsForTask 在任务需要 GPU 时用已分配到的单个 device id 构造 NVIDIA DeviceRequest。
+func gpuDeviceRequestsForTask(resGPU string, deviceID string) []container.DeviceRequest {
 	if !TaskWantsGPU(resGPU) {
 		return nil
 	}
-	ids, err := ResolveNVIDIADeviceIDsForAttach(hr)
-	if err != nil || len(ids) == 0 {
+	deviceID = strings.TrimSpace(deviceID)
+	if deviceID == "" {
 		return nil
 	}
 	dr := container.DeviceRequest{
 		Driver:       "nvidia",
 		Capabilities: [][]string{{"gpu"}},
-		DeviceIDs:    ids,
+		DeviceIDs:    []string{deviceID},
 	}
 	return []container.DeviceRequest{dr}
 }

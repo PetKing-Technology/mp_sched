@@ -50,13 +50,17 @@ func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 	t.Logf("PreviewStartParams (SkipPull, 单卡):\n%s", string(b))
 }
 
-func TestStartParamsSnapshot_MultiGPUInOneRequest(t *testing.T) {
+func TestStartParamsSnapshot_UsesAssignedSingleGPU(t *testing.T) {
 	t.Parallel()
 	dck, _ := New(&config.Docker{
 		HostResources: config.DockerHostResources{
 			GPUIDs: []string{"GPU-0", "GPU-1"},
 		},
 	})
+	extra, err := ExtraWithAssignedNVIDIAGPUID([]byte(`{}`), "GPU-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	task := &model.Task{
 		TaskID:    "22222222-2222-2222-2222-222222222222",
 		Provider:  "docker",
@@ -64,14 +68,15 @@ func TestStartParamsSnapshot_MultiGPUInOneRequest(t *testing.T) {
 		Image:     "alpine:3.20",
 		ResGPU:    "yes",
 		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
+		Extra:     datatypes.JSON(extra),
 	}
 	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ids := snap.Host.DeviceRequests[0].DeviceIDs
-	if len(ids) != 2 || ids[0] != "GPU-0" || ids[1] != "GPU-1" {
-		t.Fatalf("want [GPU-0 GPU-1], got %v", ids)
+	if len(ids) != 1 || ids[0] != "GPU-1" {
+		t.Fatalf("want only assigned GPU-1, got %v", ids)
 	}
 	t.Logf("device_ids: %v", ids)
 }
@@ -96,7 +101,7 @@ func TestStartParamsSnapshot_DedupedDeviceIDsFromMultiset(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := snap.Host.DeviceRequests[0].DeviceIDs
-	// gpu_ids 为多重集，写入容器时按 id 去重，仅挂一次 GPU-0
+	// 没有 Extra 分配结果时兼容旧任务，回退到配置中的第一个槽位，仍只挂一张卡。
 	if len(ids) != 1 || ids[0] != "GPU-0" {
 		t.Fatalf("device_ids: %v", ids)
 	}

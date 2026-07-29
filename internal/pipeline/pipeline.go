@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
 	dockercli "github.com/docker/docker/client"
 	"github.com/google/uuid"
@@ -157,23 +159,60 @@ func (p *Pipeline) executeStart(ctx context.Context, t *model.Task) error {
 		if e != nil {
 			return e
 		}
-		if ok, _ := scheduler.Admit(p.Cfg.Scheduler, tt, counts); !ok {
-			return taskrepo.ErrNotAdmitted
+		if ok, reason := scheduler.Admit(p.Cfg.Scheduler, tt, counts); !ok {
+			return fmt.Errorf("%w: %s", taskrepo.ErrNotAdmitted, reason)
 		}
-		if tt.Provider == "docker" && p.Cfg != nil {
+		if tt.Provider == "docker" && p.Cfg != nil && docker.TaskWantsGPU(tt.ResGPU) {
+			if e := r2.LockDockerGPUAdmissionWithDB(tx); e != nil {
+				return e
+			}
 			occ, e := r2.ListDockerOccupyingGPUTasksWithDB(tx)
 			if e != nil {
 				return e
 			}
-			if err := docker.CheckDockerGPUOccupancyWithCandidate(p.Cfg.Docker.HostResources, occ, tt); err != nil {
-				return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+			var gpuID string
+			if policy := p.Cfg.Docker.GPUAdmission; policy.Enable {
+				inventory, err := docker.QueryNVIDIAGPUs(ctx, time.Duration(policy.QueryTimeoutSeconds)*time.Second)
+				if err != nil {
+					slog.Info("docker gpu inventory unavailable", "task_id", tt.TaskID, "reason", err.Error())
+					return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+				}
+				gpuID, err = docker.AssignOpportunisticNVIDIADeviceID(
+					p.Cfg.Docker.HostResources, policy, occ, tt, inventory, time.Now().UTC(),
+				)
+				if err != nil {
+					slog.Info("docker gpu not admitted", "task_id", tt.TaskID, "reason", err.Error())
+					return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+				}
+			} else {
+				var err error
+				gpuID, err = docker.AssignNVIDIADeviceIDForTask(p.Cfg.Docker.HostResources, occ, tt)
+				if err != nil {
+					slog.Info("docker gpu not admitted", "task_id", tt.TaskID, "reason", err.Error())
+					return fmt.Errorf("%w: %v", taskrepo.ErrNotAdmitted, err)
+				}
 			}
+			extra, err := docker.ExtraWithAssignedNVIDIAGPUID(tt.Extra, gpuID)
+			if err != nil {
+				return err
+			}
+			tt.Extra = datatypes.JSON(extra)
 		}
-		ok, e := r2.TrySetStatusWithDB(tx, t.TaskID, model.TaskStatusProcessing, model.TaskStatusAdmitted)
-		if e != nil {
-			return e
+		updates := map[string]any{
+			"status":           model.TaskStatusAdmitted,
+			"pending_reason":   "",
+			"next_schedule_at": nil,
 		}
-		if !ok {
+		if len(tt.Extra) > 0 {
+			updates["extra"] = tt.Extra
+		}
+		res := tx.Model(&model.Task{}).
+			Where("task_id = ? AND status = ?", t.TaskID, model.TaskStatusProcessing).
+			Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
 			return errors.New("pipeline: status CAS failed")
 		}
 		return nil

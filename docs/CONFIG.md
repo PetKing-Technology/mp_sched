@@ -103,6 +103,7 @@ events never claim a success digest.
 | 键 | 含义 | 缺省 |
 |----|------|------|
 | `poll_ms` | 无 `pending` 时轮询休眠（毫秒） | 200 |
+| `not_admitted_retry_ms` | 准入失败任务再次参与扫描的最短间隔；冷却期间继续回填后续 pending 任务 | 2000 |
 | `admitted_timeout_seconds` | 大于 0 时把长期 `admitted` 且 `updated_at` 太旧的标 `failed`；0 = 关闭 | 0 |
 | `allowed_providers` | 非空如 `["docker"]` 时只抢占对应 provider 的 pending（多 worker 分片） | 空 |
 | `default_max_runtime_seconds` | 任务 `max_runtime_seconds=0` 时使用的运行时长上限（秒，自进入 `running` 起算）；0 表示默认不限时（任务仍可显式 `>0` 限时或 `-1` 跳过） | 3600 |
@@ -137,7 +138,21 @@ events never claim a success digest.
 | `username` | registry 用户名 |
 | `token` | 作 registry 密码（与 `docker login` 的 token 一致） |
 
-### 9.2 `docker.host_resources`
+### 9.2 `docker.gpu_admission`
+
+机会式模式不为单个任务分配固定显存。启动条件为 `memory.free >= min_start_free_memory_mb + reserve_memory_mb`；默认即真实空闲显存至少30720 MiB。
+
+| 键 | 含义 | 缺省 |
+|----|------|------|
+| `enable` | 开启 nvidia-smi 真实显存准入；查询失败时保持 pending | false（示例配置开启） |
+| `min_start_free_memory_mb` | 扣除公共余量后，新任务所需启动空间 | 20480 |
+| `reserve_memory_mb` | 每卡公共安全余量 | 10240 |
+| `launch_guard_seconds` | admitted 及刚进入 running 的同卡启动保护 | 120 |
+| `query_timeout_seconds` | nvidia-smi 查询超时 | 3 |
+
+开启后，`host_resources.gpu_ids` 表示允许调度的 GPU 集合，重复项去重；关闭后保留原多重集槽位语义。完整设计见 [OPPORTUNISTIC_GPU_SCHEDULING.md](OPPORTUNISTIC_GPU_SCHEDULING.md)。
+
+### 9.3 `docker.host_resources`
 
 CPU / 内存通过 `Provider.ResourceCheck` 比对；GPU 槽位在 `executeStart` **事务内**由 `docker.CheckDockerGPUOccupancyWithCandidate` 比对（已 `admitted|running` 的 docker start 任务 **加上** 当前待 admit 任务）。超槽位时返回 `ErrNotAdmitted`，任务保持/退回 `pending`，与全局并发满一致。
 
@@ -154,7 +169,7 @@ GPU 行为补充：
 - 任一 id 总占用 > 槽位数时：在 admit **事务内**拒绝，**退回 `pending`**，下一轮 `ClaimNext` 可再试（与 `scheduler.Admit` 反压一致）；不会仅因 GPU 满而标 `failed`。
 - 旁路读取剩余槽位：`docker.RemainingGPUSlots(hostCap, used)`。
 
-### 9.3 `docker.mounts`
+### 9.4 `docker.mounts`
 
 数组，每项三字段，所有任务都会带上：
 

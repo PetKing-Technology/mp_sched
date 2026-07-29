@@ -243,11 +243,18 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 	if c.cfg != nil {
 		hr = &c.cfg.HostResources
 	}
+	gpuID := AssignedNVIDIAGPUID(t)
+	if gpuID == "" && TaskWantsGPU(t.ResGPU) && hr != nil {
+		ids, _ := ResolveNVIDIADeviceIDsForAttach(hr)
+		if len(ids) > 0 {
+			gpuID = ids[0]
+		}
+	}
 	hostCfg = &container.HostConfig{
 		Resources: container.Resources{
 			NanoCPUs:       nano,
 			Memory:         mem,
-			DeviceRequests: gpuDeviceRequestsForTask(t.ResGPU, hr),
+			DeviceRequests: gpuDeviceRequestsForTask(t.ResGPU, gpuID),
 		},
 		Mounts:     mnts,
 		AutoRemove: spec.AutoRemove,
