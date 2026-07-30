@@ -146,9 +146,11 @@ type Docker struct {
 type DockerGPUAdmission struct {
 	Enable               bool `mapstructure:"enable" yaml:"enable"`
 	MinStartFreeMemoryMB int  `mapstructure:"min_start_free_memory_mb" yaml:"min_start_free_memory_mb"`
-	ReserveMemoryMB      int  `mapstructure:"reserve_memory_mb" yaml:"reserve_memory_mb"`
-	LaunchGuardSeconds   int  `mapstructure:"launch_guard_seconds" yaml:"launch_guard_seconds"`
-	QueryTimeoutSeconds  int  `mapstructure:"query_timeout_seconds" yaml:"query_timeout_seconds"`
+	// ReserveMemoryMB and LaunchGuardSeconds remain parseable for backward-compatible YAML,
+	// but free-memory-only admission intentionally ignores nominal reservations and guards.
+	ReserveMemoryMB     int `mapstructure:"reserve_memory_mb" yaml:"reserve_memory_mb"`
+	LaunchGuardSeconds  int `mapstructure:"launch_guard_seconds" yaml:"launch_guard_seconds"`
+	QueryTimeoutSeconds int `mapstructure:"query_timeout_seconds" yaml:"query_timeout_seconds"`
 }
 
 // DockerHostResources 本机上限。机会式模式下 gpu_ids 是允许设备集合；关闭后为固定槽位多重集。

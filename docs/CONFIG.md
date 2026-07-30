@@ -140,14 +140,14 @@ events never claim a success digest.
 
 ### 9.2 `docker.gpu_admission`
 
-机会式模式不为单个任务分配固定显存。启动条件为 `memory.free >= min_start_free_memory_mb + reserve_memory_mb`；默认即真实空闲显存至少30720 MiB。
+机会式模式不为单个任务分配固定显存，也不把容器 GPU 挂载、`admitted/running` 状态或历史单卡分配当成显存占用。启动条件仅为 `memory.free >= min_start_free_memory_mb`；默认即真实空闲显存至少 20480 MiB。
 
 | 键 | 含义 | 缺省 |
 |----|------|------|
 | `enable` | 开启 nvidia-smi 真实显存准入；查询失败时保持 pending | false（示例配置开启） |
-| `min_start_free_memory_mb` | 扣除公共余量后，新任务所需启动空间 | 20480 |
-| `reserve_memory_mb` | 每卡公共安全余量 | 10240 |
-| `launch_guard_seconds` | admitted 及刚进入 running 的同卡启动保护 | 120 |
+| `min_start_free_memory_mb` | 新任务准入所需的实时空闲显存 | 20480 |
+| `reserve_memory_mb` | 兼容旧 YAML；free-memory-only 模式忽略 | 0 |
+| `launch_guard_seconds` | 兼容旧 YAML；free-memory-only 模式忽略 | 0 |
 | `query_timeout_seconds` | nvidia-smi 查询超时 | 3 |
 
 开启后，`host_resources.gpu_ids` 表示允许调度的 GPU 集合，重复项去重；关闭后保留原多重集槽位语义。完整设计见 [OPPORTUNISTIC_GPU_SCHEDULING.md](OPPORTUNISTIC_GPU_SCHEDULING.md)。

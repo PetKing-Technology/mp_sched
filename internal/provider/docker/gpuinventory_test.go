@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"gorm.io/datatypes"
-
 	"mp_sched/internal/config"
 	"mp_sched/internal/model"
 )
@@ -43,23 +41,38 @@ func TestAssignOpportunisticNVIDIADeviceID_UsesMostFreeEligibleGPU(t *testing.T)
 	}
 }
 
-func TestAssignOpportunisticNVIDIADeviceID_RequiresReserveOnTopOfStartThreshold(t *testing.T) {
+func TestAssignOpportunisticNVIDIADeviceID_AdmitsAtConfiguredFreeMemoryThreshold(t *testing.T) {
 	hr := config.DockerHostResources{GPUIDs: []string{"0"}}
 	policy := config.DockerGPUAdmission{
 		MinStartFreeMemoryMB: 20 * 1024,
 		ReserveMemoryMB:      10 * 1024,
 		LaunchGuardSeconds:   120,
 	}
-	inventory := []GPUInfo{{Index: "0", TotalMemoryMB: 46068, FreeMemoryMB: 30*1024 - 1}}
+	inventory := []GPUInfo{{Index: "0", TotalMemoryMB: 46068, FreeMemoryMB: 20 * 1024}}
+	id, err := AssignOpportunisticNVIDIADeviceID(
+		hr, policy, nil, &model.Task{TaskID: "next", ResGPU: "true"}, inventory, time.Now(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "0" {
+		t.Fatalf("want GPU 0, got %q", id)
+	}
+}
+
+func TestAssignOpportunisticNVIDIADeviceID_RejectsBelowConfiguredFreeMemoryThreshold(t *testing.T) {
+	hr := config.DockerHostResources{GPUIDs: []string{"0"}}
+	policy := config.DockerGPUAdmission{MinStartFreeMemoryMB: 20 * 1024}
+	inventory := []GPUInfo{{Index: "0", TotalMemoryMB: 46068, FreeMemoryMB: 20*1024 - 1}}
 	_, err := AssignOpportunisticNVIDIADeviceID(
 		hr, policy, nil, &model.Task{TaskID: "next", ResGPU: "true"}, inventory, time.Now(),
 	)
-	if err == nil || !strings.Contains(err.Error(), "required_free_mb=30720") {
+	if err == nil || !strings.Contains(err.Error(), "required_free_mb=20480") {
 		t.Fatalf("expected threshold rejection, got %v", err)
 	}
 }
 
-func TestAssignOpportunisticNVIDIADeviceID_ObservesLaunchGuard(t *testing.T) {
+func TestAssignOpportunisticNVIDIADeviceID_IgnoresRecentRunningAssignment(t *testing.T) {
 	now := time.Now().UTC()
 	extra, err := ExtraWithAssignedNVIDIAGPUID([]byte("{}"), "0")
 	if err != nil {
@@ -70,7 +83,7 @@ func TestAssignOpportunisticNVIDIADeviceID_ObservesLaunchGuard(t *testing.T) {
 		TaskID:    "starting",
 		ResGPU:    "true",
 		Status:    model.TaskStatusRunning,
-		Extra:     datatypes.JSON(extra),
+		Extra:     extra,
 		RunningAt: &runningAt,
 	}}
 	hr := config.DockerHostResources{GPUIDs: []string{"0"}}
@@ -80,21 +93,22 @@ func TestAssignOpportunisticNVIDIADeviceID_ObservesLaunchGuard(t *testing.T) {
 		LaunchGuardSeconds:   120,
 	}
 	inventory := []GPUInfo{{Index: "0", TotalMemoryMB: 46068, FreeMemoryMB: 40000}}
-	if _, err := AssignOpportunisticNVIDIADeviceID(
+	id, err := AssignOpportunisticNVIDIADeviceID(
 		hr, policy, occupying, &model.Task{TaskID: "next", ResGPU: "true"}, inventory, now,
-	); err == nil || !strings.Contains(err.Error(), "launch_guarded=1") {
-		t.Fatalf("expected launch guard rejection, got %v", err)
+	)
+	if err != nil || id != "0" {
+		t.Fatalf("nominal running assignment must not block free GPU: id=%q err=%v", id, err)
 	}
 }
 
-func TestAssignOpportunisticNVIDIADeviceID_AdmittedAlwaysGuards(t *testing.T) {
+func TestAssignOpportunisticNVIDIADeviceID_IgnoresAdmittedAssignment(t *testing.T) {
 	now := time.Now().UTC()
 	extra, _ := ExtraWithAssignedNVIDIAGPUID([]byte("{}"), "0")
 	occupying := []model.Task{{
 		TaskID:    "pulling",
 		ResGPU:    "true",
 		Status:    model.TaskStatusAdmitted,
-		Extra:     datatypes.JSON(extra),
+		Extra:     extra,
 		UpdatedAt: now.Add(-time.Hour),
 	}}
 	hr := config.DockerHostResources{GPUIDs: []string{"0"}}
@@ -104,21 +118,22 @@ func TestAssignOpportunisticNVIDIADeviceID_AdmittedAlwaysGuards(t *testing.T) {
 		LaunchGuardSeconds:   120,
 	}
 	inventory := []GPUInfo{{Index: "0", TotalMemoryMB: 46068, FreeMemoryMB: 40000}}
-	if _, err := AssignOpportunisticNVIDIADeviceID(
+	id, err := AssignOpportunisticNVIDIADeviceID(
 		hr, policy, occupying, &model.Task{TaskID: "next", ResGPU: "true"}, inventory, now,
-	); err == nil {
-		t.Fatal("admitted task must guard its assigned GPU until Run finishes")
+	)
+	if err != nil || id != "0" {
+		t.Fatalf("nominal admitted assignment must not block free GPU: id=%q err=%v", id, err)
 	}
 }
 
-func TestAssignOpportunisticNVIDIADeviceID_LegacyTaskGuardsAllConfiguredGPUs(t *testing.T) {
+func TestAssignOpportunisticNVIDIADeviceID_IgnoresLegacyMultiGPUNominalOccupancy(t *testing.T) {
 	now := time.Now().UTC()
 	runningAt := now.Add(-time.Hour)
 	occupying := []model.Task{{
 		TaskID:    "legacy-multi-gpu",
 		ResGPU:    "true",
 		Status:    model.TaskStatusRunning,
-		Extra:     datatypes.JSON(`{}`),
+		Extra:     []byte(`{}`),
 		RunningAt: &runningAt,
 	}}
 	hr := config.DockerHostResources{GPUIDs: []string{"1", "2"}}
@@ -131,10 +146,10 @@ func TestAssignOpportunisticNVIDIADeviceID_LegacyTaskGuardsAllConfiguredGPUs(t *
 		{Index: "1", TotalMemoryMB: 46068, FreeMemoryMB: 40000},
 		{Index: "2", TotalMemoryMB: 46068, FreeMemoryMB: 45000},
 	}
-	_, err := AssignOpportunisticNVIDIADeviceID(
+	id, err := AssignOpportunisticNVIDIADeviceID(
 		hr, policy, occupying, &model.Task{TaskID: "next", ResGPU: "true"}, inventory, now,
 	)
-	if err == nil || !strings.Contains(err.Error(), "launch_guarded=2") {
-		t.Fatalf("legacy task must guard all configured GPUs, got %v", err)
+	if err != nil || id != "2" {
+		t.Fatalf("legacy nominal occupancy must not block freer GPU 2: id=%q err=%v", id, err)
 	}
 }
