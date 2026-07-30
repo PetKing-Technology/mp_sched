@@ -46,8 +46,33 @@ func TestStartParamsSnapshot_SingleGPU(t *testing.T) {
 	if snap.Host.ResGPU != "true" {
 		t.Fatalf("ResGPU: %q", snap.Host.ResGPU)
 	}
+	if snap.Host.Runtime != "nvidia" {
+		t.Fatalf("GPU task runtime: got %q, want nvidia", snap.Host.Runtime)
+	}
 	b, _ := json.MarshalIndent(snap, "", "  ")
 	t.Logf("PreviewStartParams (SkipPull, 单卡):\n%s", string(b))
+}
+
+func TestStartParamsSnapshot_NonGPUTaskKeepsDefaultRuntime(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		TaskID:    "66666666-6666-6666-6666-666666666666",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "alpine:3.20",
+		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
+	}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Host.Runtime != "" {
+		t.Fatalf("non-GPU task runtime: got %q, want default", snap.Host.Runtime)
+	}
 }
 
 func TestStartParamsSnapshot_UsesAssignedSingleGPU(t *testing.T) {

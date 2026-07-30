@@ -40,6 +40,7 @@ type HostConfigSnapshot struct {
 	NanoCPUs       int64                   `json:"nano_cpus,omitempty"`
 	Memory         int64                   `json:"memory_bytes,omitempty"`
 	DeviceRequests []DeviceRequestSnapshot `json:"device_requests,omitempty"`
+	Runtime        string                  `json:"runtime,omitempty"`
 	// ResGPU 任务侧「是否需要 GPU」；具体 device id 来自 [docker.host_resources]
 	ResGPU      string          `json:"res_gpu_input,omitempty"`
 	Mounts      []MountSnapshot `json:"mounts,omitempty"`
@@ -107,6 +108,7 @@ func snapshotFromMoby(name string, t *model.Task, cfg *container.Config, hostCfg
 		},
 		Host: HostConfigSnapshot{
 			ResGPU:         "",
+			Runtime:        hostCfg.Runtime,
 			Mounts:         mountsSnapshot(hostCfg.Mounts),
 			NetworkMode:    string(hostCfg.NetworkMode),
 			AutoRemove:     hostCfg.AutoRemove,
@@ -258,6 +260,11 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 		},
 		Mounts:     mnts,
 		AutoRemove: spec.AutoRemove,
+	}
+	if TaskWantsGPU(t.ResGPU) && len(hostCfg.Resources.DeviceRequests) > 0 {
+		// DeviceRequests select a GPU but do not override Docker's default runtime.
+		// This host defaults to runc, which does not inject CUDA devices.
+		hostCfg.Runtime = "nvidia"
 	}
 	if nm := strings.TrimSpace(spec.NetworkMode); nm != "" {
 		hostCfg.NetworkMode = container.NetworkMode(nm)
