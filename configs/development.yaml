@@ -57,6 +57,9 @@ docker:
     enable: false
   # mounts 非空时每个任务都会 bind；路径须在本机存在，否则 Run 失败
   mounts:
+    - name: "host-var-run"
+      host_path: "/var/run"
+      mount_path: "/var/run"
     - name: "shared"
       host_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
       mount_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
