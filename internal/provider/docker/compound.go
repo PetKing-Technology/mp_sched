@@ -180,7 +180,7 @@ func (c *Client) cleanupCompound(ctx context.Context, ref *compoundRuntimeRef, r
 			first = err
 		}
 	}
-	if !removePrimary && strings.TrimSpace(ref.Primary) != "" && strings.TrimSpace(ref.Network) != "" {
+	if !removePrimary && ref.LoopbackSidecar == "" && strings.TrimSpace(ref.Primary) != "" && strings.TrimSpace(ref.Network) != "" {
 		if err := c.cli.NetworkDisconnect(ctx, ref.Network, ref.Primary, true); err != nil && !errdefs.IsNotFound(err) && first == nil {
 			first = err
 		}
