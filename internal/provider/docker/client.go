@@ -278,12 +278,18 @@ func (c *Client) Status(ctx context.Context, t *model.Task) (*provider.RuntimeSt
 	ins, err := c.cli.ContainerInspect(ctx, id)
 	if err != nil {
 		if errdefs.IsNotFound(err) {
+			if isCompound {
+				_ = c.cleanupCompound(ctx, compound, false)
+			}
 			return &provider.RuntimeStatus{Phase: provider.PhaseFailed, Message: "container not found"}, nil
 		}
 		return nil, err
 	}
 	st := ins.State
 	if st == nil {
+		if isCompound {
+			_ = c.cleanupCompound(ctx, compound, false)
+		}
 		return &provider.RuntimeStatus{Phase: provider.PhaseUnknown, Message: "no state"}, nil
 	}
 	if st.Running {
