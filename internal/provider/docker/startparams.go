@@ -42,6 +42,7 @@ type HostConfigSnapshot struct {
 	// ResGPU 任务侧「是否需要 GPU」；具体 device id 来自 [docker.host_resources]
 	ResGPU      string            `json:"res_gpu_input,omitempty"`
 	Mounts      []MountSnapshot   `json:"mounts,omitempty"`
+	ShmSizeBytes int64            `json:"shm_size_bytes,omitempty"`
 	NetworkMode string            `json:"network_mode,omitempty"`
 	AutoRemove  bool              `json:"auto_remove,omitempty"`
 }
@@ -107,6 +108,7 @@ func snapshotFromMoby(name string, t *model.Task, cfg *container.Config, hostCfg
 		Host: HostConfigSnapshot{
 			ResGPU:       "",
 			Mounts:       mountsSnapshot(hostCfg.Mounts),
+			ShmSizeBytes: hostCfg.ShmSize,
 			NetworkMode:  string(hostCfg.NetworkMode),
 			AutoRemove:   hostCfg.AutoRemove,
 			DeviceRequests: deviceReqSnapshot(hostCfg.Resources.DeviceRequests),
@@ -183,6 +185,9 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 	if err != nil {
 		return "", nil, nil, err
 	}
+	if spec.ShmSizeBytes < 0 {
+		return "", nil, nil, fmt.Errorf("docker: shm_size_bytes must be non-negative")
+	}
 	image := resolveImage(t, spec)
 	if image == "" {
 		return "", nil, nil, fmt.Errorf("docker: no image (set task.image or business.image)")
@@ -239,6 +244,7 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 			DeviceRequests: gpuDeviceRequestsForTask(t.ResGPU, hr),
 		},
 		Mounts:     mnts,
+		ShmSize:    spec.ShmSizeBytes,
 		AutoRemove: spec.AutoRemove,
 	}
 	if nm := strings.TrimSpace(spec.NetworkMode); nm != "" {

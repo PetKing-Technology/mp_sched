@@ -21,6 +21,10 @@ type BusinessSpec struct {
 	Hostname    string   `json:"hostname"`
 	NetworkMode string   `json:"network_mode"`
 	AutoRemove  bool     `json:"auto_remove"`
+	// ShmSizeBytes is an explicit, task-owned Docker /dev/shm allocation.
+	// Zero preserves Docker's default; a negative value is rejected before
+	// ContainerCreate rather than being silently normalized.
+	ShmSizeBytes int64 `json:"shm_size_bytes"`
 
 	// 以下为 type=config（或空，默认）时使用
 	ConfigOSSKey        string `json:"config_oss_key"`
