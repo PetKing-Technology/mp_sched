@@ -123,3 +123,28 @@ func TestStartParamsSnapshot_ProjectsDeclaredShmSize(t *testing.T) {
 		t.Fatalf("shm_size_bytes: want 128849018880, got %d", snap.Host.ShmSizeBytes)
 	}
 }
+
+func TestStartParamsSnapshot_ProjectsConfiguredReadonlyMount(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{Mounts: []config.DockerMount{
+		{Name: "immutable-source", HostPath: "/tmp/source", MountPath: "/opt/source", ReadOnly: true},
+		{Name: "artifact-workspace", HostPath: "/tmp/workspace", MountPath: "/workspace", ReadOnly: false},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		TaskID:    "55555555-5555-5555-5555-555555555555",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "alpine:3.20",
+		Business:  datatypes.JSON(`{"type":"config","config_mode":"app"}`),
+	}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Host.Mounts) != 2 || !snap.Host.Mounts[0].ReadOnly || snap.Host.Mounts[1].ReadOnly {
+		t.Fatalf("configured readonly mounts not projected: %#v", snap.Host.Mounts)
+	}
+}

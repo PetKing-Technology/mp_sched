@@ -147,6 +147,7 @@ type DockerMount struct {
 	Name      string `mapstructure:"name" yaml:"name"`
 	HostPath  string `mapstructure:"host_path" yaml:"host_path"`
 	MountPath string `mapstructure:"mount_path" yaml:"mount_path"`
+	ReadOnly  bool   `mapstructure:"read_only" yaml:"read_only"`
 }
 
 // DockerOSS S3 兼容（阿里云 OSS、MinIO 等）；仅 business.config_mode=worker 拉取配置时用到

@@ -49,6 +49,13 @@ docker:
     - name: "sop-native-artifacts"
       host_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
       mount_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
+      read_only: false
+    # Pinned canonical recipe checkout.  The isolated worker mounts it read-only;
+    # individual SOP tasks may reference only paths below this fixed root.
+    - name: "sop-native-canonical-recipes-a8995ed"
+      host_path: "/tmp/agent_skills_recipes-a8995ed"
+      mount_path: "/opt/sop-native-recipes"
+      read_only: true
   oss:
     enable: false
   host_resources:

@@ -209,7 +209,7 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 				Type:     mount.TypeBind,
 				Source:   h,
 				Target:   p,
-				ReadOnly: false,
+				ReadOnly: m.ReadOnly,
 			})
 		}
 	}
