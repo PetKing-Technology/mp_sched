@@ -101,3 +101,25 @@ func TestStartParamsSnapshot_DedupedDeviceIDsFromMultiset(t *testing.T) {
 		t.Fatalf("device_ids: %v", ids)
 	}
 }
+
+func TestStartParamsSnapshot_ProjectsDeclaredShmSize(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		TaskID:    "44444444-4444-4444-4444-444444444444",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "boltz2@sha256:c5c8432144aa1fd87a16d6991b68e93c3e7ec1cad19a59d07020c5987bc9b731",
+		Business:  datatypes.JSON(`{"type":"config","shm_size_bytes":128849018880}`),
+	}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.Host.ShmSizeBytes != 128849018880 {
+		t.Fatalf("shm_size_bytes: want 128849018880, got %d", snap.Host.ShmSizeBytes)
+	}
+}
