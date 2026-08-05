@@ -37,14 +37,16 @@ func TestParseBusinessCompoundRejectsHostNetwork(t *testing.T) {
 func TestParseBusinessCompoundRejectsDuplicateOrMissingSidecarIdentity(t *testing.T) {
 	for _, raw := range []string{
 		`{"compound":{"sidecars":[]}}`,
-		`{"compound":{"sidecars":[{"name":"app","image":"a"},{"name":"app","image":"b"}]}}`,
+		`{"compound":{"sidecars":[{"name":"app","image":"a@sha256:1"},{"name":"app","image":"b@sha256:2"}]}}`,
 		`{"compound":{"sidecars":[{"name":"app"}]}}`,
+		`{"compound":{"sidecars":[{"name":"app","image":"a:latest"}]}}`,
+		`{"compound":{"sidecars":[{"name":"app/service","image":"a@sha256:1"}]}}`,
 	} {
 		if _, err := parseBusiness([]byte(raw)); err == nil {
 			t.Fatalf("expected rejection for %s", raw)
 		}
 	}
-	if _, err := parseBusiness([]byte(`{"compound":{"sidecars":[{"name":"a","image":"a","loopback":true},{"name":"b","image":"b","loopback":true}]}}`)); err == nil {
+	if _, err := parseBusiness([]byte(`{"compound":{"sidecars":[{"name":"a","image":"a@sha256:1","loopback":true},{"name":"b","image":"b@sha256:2","loopback":true}]}}`)); err == nil {
 		t.Fatal("expected duplicate loopback rejection")
 	}
 }

@@ -95,12 +95,19 @@ func validateCompound(spec *BusinessSpec) error {
 		if name == "" {
 			return fmt.Errorf("docker: compound.sidecars[%d].name is required", i)
 		}
+		if !validCompoundName(name) {
+			return fmt.Errorf("docker: compound.sidecars[%d].name must be DNS-safe", i)
+		}
 		if _, ok := seen[name]; ok {
 			return fmt.Errorf("docker: duplicate compound sidecar name %q", name)
 		}
 		seen[name] = struct{}{}
-		if strings.TrimSpace(s.Image) == "" {
+		image := strings.TrimSpace(s.Image)
+		if image == "" {
 			return fmt.Errorf("docker: compound.sidecars[%d].image is required", i)
+		}
+		if !strings.Contains(image, "@sha256:") {
+			return fmt.Errorf("docker: compound.sidecars[%d].image must be digest-pinned", i)
 		}
 		if s.Loopback {
 			loopback++
@@ -113,6 +120,19 @@ func validateCompound(spec *BusinessSpec) error {
 		return fmt.Errorf("docker: compound tasks cannot use network_mode=%q", spec.NetworkMode)
 	}
 	return nil
+}
+
+func validCompoundName(name string) bool {
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	for i, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || (i > 0 && (r == '-' || r == '_' || r == '.')) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // BusinessPayloadType 归一化 type：config（含 file/空）或 env
