@@ -1,0 +1,59 @@
+# Isolated-only scheduler profile for SOP-native GPU acceptance evidence.
+# Never point either process at the shared deployment database or port.
+server:
+  addr: ":18098"
+  log_level: info
+
+database:
+  dsn: "postgres://postgres:postgres@127.0.0.1:5438/mp_sched_sop_e2e?sslmode=disable"
+  log_queries: false
+
+scheduler:
+  max_concurrent_running: 1
+  max_concurrent_slow: 1
+  min_free_slots_for_fast: 0
+
+controller:
+  http:
+    enable: true
+    addr: ":18098"
+
+callback:
+  enable: false
+
+worker:
+  poll_ms: 200
+  admitted_timeout_seconds: 0
+  allowed_providers: [docker]
+  default_max_runtime_seconds: 1800
+  runtime_sweeper_interval_seconds: 10
+
+reconciler:
+  enable: true
+  interval_seconds: 2
+
+clickhouse:
+  enable: false
+
+telemetry:
+  slog_to_clickhouse: false
+
+docker:
+  data_dir: "/tmp/mp_sched_sop_native_e2e_data"
+  config_file_container_path: "/etc/mp_sched/config.json"
+  image_pull:
+    enable: false
+  # mp_sched owns this mapping globally. SOP tasks carry only the auditable
+  # required_global_mount contract and cannot override it per task.
+  mounts:
+    - name: "sop-native-artifacts"
+      host_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
+      mount_path: "/mnt/disk_1_4t/mpai_data/agent_workspace"
+  oss:
+    enable: false
+  host_resources:
+    max_cpu: "64"
+    max_memory: "256GiB"
+    # GPU 3 is reserved for this isolated worker profile and is not part of
+    # the shared deployment profile's configured scheduler slots.
+    gpu_ids: ["3"]
