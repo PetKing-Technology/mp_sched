@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -21,6 +20,7 @@ import (
 
 	"mp_sched/internal/config"
 	"mp_sched/internal/model"
+	dockerprovider "mp_sched/internal/provider/docker"
 	"mp_sched/internal/taskrepo"
 )
 
@@ -78,7 +78,7 @@ func FinalFlushDockerLogs(ctx context.Context, app *config.App, eng *client.Clie
 	if task.Provider != "docker" {
 		return
 	}
-	cid := strings.TrimSpace(task.RuntimeRef)
+	cid := dockerprovider.PrimaryRuntimeID(task.RuntimeRef)
 	if cid == "" {
 		return
 	}
@@ -198,7 +198,7 @@ func runStatsLoop(ctx context.Context, eng *client.Client, repo *taskrepo.Repo, 
 		defer cancel()
 		for i := range tasks {
 			t := &tasks[i]
-			id := strings.TrimSpace(t.RuntimeRef)
+			id := dockerprovider.PrimaryRuntimeID(t.RuntimeRef)
 			if id == "" {
 				continue
 			}
@@ -214,13 +214,13 @@ func runStatsLoop(ctx context.Context, eng *client.Client, repo *taskrepo.Repo, 
 			}
 			_ = b.Close()
 			rows = append(rows, DockerStatRow{
-				TS:            now,
-				TaskID:        t.TaskID,
-				ContainerID:   id,
-				CPUPercent:    cpuPercent(&sj),
-				MemUsage:      sj.MemoryStats.Usage,
-				MemLimit:      sj.MemoryStats.Limit,
-				Pids:          uint32(sj.PidsStats.Current),
+				TS:          now,
+				TaskID:      t.TaskID,
+				ContainerID: id,
+				CPUPercent:  cpuPercent(&sj),
+				MemUsage:    sj.MemoryStats.Usage,
+				MemLimit:    sj.MemoryStats.Limit,
+				Pids:        uint32(sj.PidsStats.Current),
 			})
 		}
 		if len(rows) == 0 {
@@ -259,7 +259,7 @@ func runLogLoop(ctx context.Context, eng *client.Client, repo *taskrepo.Repo, co
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		for i := range tasks {
 			t := &tasks[i]
-			cid := strings.TrimSpace(t.RuntimeRef)
+			cid := dockerprovider.PrimaryRuntimeID(t.RuntimeRef)
 			if cid == "" {
 				continue
 			}

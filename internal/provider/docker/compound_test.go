@@ -60,6 +60,19 @@ func TestLoopbackSidecarIDMapsToDeclaredSidecar(t *testing.T) {
 	}
 }
 
+func TestPrimaryRuntimeIDAcceptsCompoundAndLegacyRefs(t *testing.T) {
+	raw, err := compoundRuntimeJSON(&compoundRuntimeRef{Version: compoundRuntimeVersion, Primary: "cid-primary", Network: "nid", Sidecars: []string{"cid-app"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := PrimaryRuntimeID(raw); got != "cid-primary" {
+		t.Fatalf("compound primary: %q", got)
+	}
+	if got := PrimaryRuntimeID("cid-legacy"); got != "cid-legacy" {
+		t.Fatalf("legacy primary: %q", got)
+	}
+}
+
 func TestPreviewCompoundRejectsDockerSocketMount(t *testing.T) {
 	dck, err := New(&config.Docker{Mounts: []config.DockerMount{{
 		Name: "socket", HostPath: "/var/run/docker.sock", MountPath: "/var/run/docker.sock",

@@ -52,6 +52,16 @@ func parseCompoundRuntimeRef(raw string) (*compoundRuntimeRef, bool, error) {
 	return &ref, true, nil
 }
 
+// PrimaryRuntimeID returns the Docker container id used for logs/stats and
+// inspect operations.  Plain runtime refs remain backward compatible.
+func PrimaryRuntimeID(raw string) string {
+	ref, ok, err := parseCompoundRuntimeRef(raw)
+	if ok && err == nil && ref != nil {
+		return ref.Primary
+	}
+	return strings.TrimSpace(raw)
+}
+
 func compoundRuntimeJSON(ref *compoundRuntimeRef) (string, error) {
 	b, err := json.Marshal(ref)
 	if err != nil {
