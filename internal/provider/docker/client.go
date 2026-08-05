@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
@@ -101,11 +102,61 @@ func (c *Client) ResourceCheck(ctx context.Context, t *model.Task) (*provider.Re
 
 // Run 创建并启动容器；runtime_ref 为容器 ID
 func (c *Client) Run(ctx context.Context, t *model.Task) (string, error) {
+	if t == nil {
+		return "", fmt.Errorf("docker: nil task")
+	}
+	spec, err := parseBusiness(t.Business)
+	if err != nil {
+		return "", err
+	}
 	name, cfg, hostCfg, err := c.runCreateSpec(ctx, t, false)
 	if err != nil {
 		return "", err
 	}
-	create, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
+	if spec.Compound == nil {
+		create, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, name)
+		if err != nil {
+			return "", fmt.Errorf("docker create: %w", err)
+		}
+		if err := c.cli.ContainerStart(ctx, create.ID, container.StartOptions{}); err != nil {
+			_ = c.cli.ContainerRemove(ctx, create.ID, container.RemoveOptions{Force: true})
+			c.removeStaging(t)
+			return "", fmt.Errorf("docker start: %w", err)
+		}
+		return create.ID, nil
+	}
+
+	// Compound path: all resources are task-owned.  A partial failure removes
+	// started sidecars and the private network before returning.
+	networkName, err := c.createCompoundNetwork(ctx, t.TaskID)
+	if err != nil {
+		return "", err
+	}
+	ref := &compoundRuntimeRef{Version: compoundRuntimeVersion, Network: networkName}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = c.cleanupCompound(context.Background(), ref, true)
+		}
+	}()
+	ids, err := c.runSidecars(ctx, t, spec.Compound, networkName)
+	ref.Sidecars = ids
+	if err != nil {
+		return "", err
+	}
+	loopbackName, loopbackID := loopbackSidecarID(spec.Compound, ids)
+	if loopbackID != "" {
+		// ASKCOS's baked MCTS client uses 127.0.0.1:9100.  Sharing the
+		// scheduler-created sidecar namespace keeps that endpoint private to
+		// this compound task; it is not host networking and exposes no port.
+		ref.LoopbackSidecar = loopbackName
+		hostCfg.NetworkMode = container.NetworkMode("container:" + loopbackID)
+	}
+	var networkingConfig *network.NetworkingConfig
+	if loopbackID == "" {
+		networkingConfig = compoundNetworking(networkName, "primary")
+	}
+	create, err := c.cli.ContainerCreate(ctx, cfg, hostCfg, networkingConfig, nil, name)
 	if err != nil {
 		return "", fmt.Errorf("docker create: %w", err)
 	}
@@ -114,7 +165,14 @@ func (c *Client) Run(ctx context.Context, t *model.Task) (string, error) {
 		c.removeStaging(t)
 		return "", fmt.Errorf("docker start: %w", err)
 	}
-	return create.ID, nil
+	ref.Primary = create.ID
+	cleanup = false
+	encoded, err := compoundRuntimeJSON(ref)
+	if err != nil {
+		_ = c.cleanupCompound(context.Background(), ref, true)
+		return "", err
+	}
+	return encoded, nil
 }
 
 func (c *Client) mergeEnv(spec *BusinessSpec) []string {
@@ -209,7 +267,15 @@ func (c *Client) Status(ctx context.Context, t *model.Task) (*provider.RuntimeSt
 	if t == nil || t.RuntimeRef == "" {
 		return &provider.RuntimeStatus{Phase: provider.PhaseUnknown, Message: "no runtime_ref"}, nil
 	}
-	ins, err := c.cli.ContainerInspect(ctx, t.RuntimeRef)
+	id := t.RuntimeRef
+	compound, isCompound, err := parseCompoundRuntimeRef(t.RuntimeRef)
+	if err != nil {
+		return &provider.RuntimeStatus{Phase: provider.PhaseFailed, Message: err.Error()}, nil
+	}
+	if isCompound {
+		id = compound.Primary
+	}
+	ins, err := c.cli.ContainerInspect(ctx, id)
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return &provider.RuntimeStatus{Phase: provider.PhaseFailed, Message: "container not found"}, nil
@@ -223,28 +289,49 @@ func (c *Client) Status(ctx context.Context, t *model.Task) (*provider.RuntimeSt
 	if st.Running {
 		return &provider.RuntimeStatus{Phase: provider.PhaseRunning, Message: st.Status}, nil
 	}
+	var out *provider.RuntimeStatus
 	switch st.Status {
 	case "exited":
 		if st.ExitCode == 0 {
-			return &provider.RuntimeStatus{Phase: provider.PhaseSucceeded, Message: "exited 0"}, nil
+			out = &provider.RuntimeStatus{Phase: provider.PhaseSucceeded, Message: "exited 0"}
+			break
 		}
-		return &provider.RuntimeStatus{
+		out = &provider.RuntimeStatus{
 			Phase:   provider.PhaseFailed,
 			Message: fmt.Sprintf("exited %d: %s", st.ExitCode, st.Error),
-		}, nil
+		}
 	case "created", "restarting":
-		return &provider.RuntimeStatus{Phase: provider.PhaseRunning, Message: st.Status}, nil
+		out = &provider.RuntimeStatus{Phase: provider.PhaseRunning, Message: st.Status}
 	case "dead", "removing":
-		return &provider.RuntimeStatus{Phase: provider.PhaseFailed, Message: st.Status}, nil
+		out = &provider.RuntimeStatus{Phase: provider.PhaseFailed, Message: st.Status}
 	default:
-		return &provider.RuntimeStatus{Phase: provider.PhaseUnknown, Message: st.Status}, nil
+		out = &provider.RuntimeStatus{Phase: provider.PhaseUnknown, Message: st.Status}
 	}
+	if out == nil {
+		out = &provider.RuntimeStatus{Phase: provider.PhaseUnknown, Message: st.Status}
+	}
+	if isCompound && out.Phase != provider.PhaseRunning && out.Phase != provider.PhaseUnknown {
+		// Sidecars and their network are not part of the primary terminal
+		// result; clean them as soon as the primary reaches a terminal phase.
+		if cleanupErr := c.cleanupCompound(ctx, compound, false); cleanupErr != nil {
+			out.Message += "; compound cleanup: " + cleanupErr.Error()
+		}
+	}
+	return out, nil
 }
 
 // Stop 停止并删除容器（若已删除则忽略），并清理本任务 staging 目录
 func (c *Client) Stop(ctx context.Context, t *model.Task) error {
 	if t == nil || t.RuntimeRef == "" {
 		return nil
+	}
+	if compound, ok, err := parseCompoundRuntimeRef(t.RuntimeRef); ok {
+		if err != nil {
+			return err
+		}
+		err := c.cleanupCompound(ctx, compound, true)
+		c.removeStaging(t)
+		return err
 	}
 	id := t.RuntimeRef
 	sec := 10

@@ -148,3 +148,29 @@ func TestStartParamsSnapshot_ProjectsConfiguredReadonlyMount(t *testing.T) {
 		t.Fatalf("configured readonly mounts not projected: %#v", snap.Host.Mounts)
 	}
 }
+
+func TestStartParamsSnapshot_CompoundUsesTaskOwnedInternalNetwork(t *testing.T) {
+	t.Parallel()
+	dck, err := New(&config.Docker{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := &model.Task{
+		TaskID:    "66666666-6666-6666-6666-666666666666",
+		Provider:  "docker",
+		Operation: model.OperationStart,
+		Image:     "mcts@sha256:abc",
+		Business:  datatypes.JSON(`{"compound":{"sidecars":[{"name":"app","image":"app@sha256:def"}]}}`),
+	}
+	snap, err := dck.PreviewStartParams(context.Background(), task, PreviewStartParamsOptions{SkipPull: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := compoundNetworkName(task.TaskID)
+	if snap.Host.NetworkMode != want {
+		t.Fatalf("network mode: want %q got %q", want, snap.Host.NetworkMode)
+	}
+	if snap.Config.Labels["mp_sched.compound"] != "true" || snap.Config.Labels["mp_sched.compound_role"] != "primary" {
+		t.Fatalf("compound labels: %#v", snap.Config.Labels)
+	}
+}

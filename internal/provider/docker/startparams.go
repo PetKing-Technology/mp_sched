@@ -15,12 +15,12 @@ import (
 
 // StartParamsSnapshot 与 ContainerCreate 前一刻一致的可 JSON 化视图（用于排查/单测，不执行创建）。
 type StartParamsSnapshot struct {
-	ContainerName string                 `json:"container_name"`
-	Image         string                 `json:"image"`
-	Config        ConfigSnapshot         `json:"config"`
-	Host          HostConfigSnapshot     `json:"host_config"`
-	RawConfigJSON json.RawMessage        `json:"raw_container_config_json,omitempty"`
-	RawHostJSON   json.RawMessage        `json:"raw_host_config_json,omitempty"`
+	ContainerName string             `json:"container_name"`
+	Image         string             `json:"image"`
+	Config        ConfigSnapshot     `json:"config"`
+	Host          HostConfigSnapshot `json:"host_config"`
+	RawConfigJSON json.RawMessage    `json:"raw_container_config_json,omitempty"`
+	RawHostJSON   json.RawMessage    `json:"raw_host_config_json,omitempty"`
 }
 
 // ConfigSnapshot 对应 container.Config 中我们会设置的主要字段。
@@ -36,15 +36,15 @@ type ConfigSnapshot struct {
 
 // HostConfigSnapshot 对应 host 上挂资源/挂载/网络。
 type HostConfigSnapshot struct {
-	NanoCPUs       int64                    `json:"nano_cpus,omitempty"`
-	Memory         int64                    `json:"memory_bytes,omitempty"`
-	DeviceRequests []DeviceRequestSnapshot  `json:"device_requests,omitempty"`
+	NanoCPUs       int64                   `json:"nano_cpus,omitempty"`
+	Memory         int64                   `json:"memory_bytes,omitempty"`
+	DeviceRequests []DeviceRequestSnapshot `json:"device_requests,omitempty"`
 	// ResGPU 任务侧「是否需要 GPU」；具体 device id 来自 [docker.host_resources]
-	ResGPU      string            `json:"res_gpu_input,omitempty"`
-	Mounts      []MountSnapshot   `json:"mounts,omitempty"`
-	ShmSizeBytes int64            `json:"shm_size_bytes,omitempty"`
-	NetworkMode string            `json:"network_mode,omitempty"`
-	AutoRemove  bool              `json:"auto_remove,omitempty"`
+	ResGPU       string          `json:"res_gpu_input,omitempty"`
+	Mounts       []MountSnapshot `json:"mounts,omitempty"`
+	ShmSizeBytes int64           `json:"shm_size_bytes,omitempty"`
+	NetworkMode  string          `json:"network_mode,omitempty"`
+	AutoRemove   bool            `json:"auto_remove,omitempty"`
 }
 
 // DeviceRequestSnapshot 来自 moby container.DeviceRequest 的易读子集。
@@ -106,11 +106,11 @@ func snapshotFromMoby(name string, t *model.Task, cfg *container.Config, hostCfg
 			Hostname:   cfg.Hostname,
 		},
 		Host: HostConfigSnapshot{
-			ResGPU:       "",
-			Mounts:       mountsSnapshot(hostCfg.Mounts),
-			ShmSizeBytes: hostCfg.ShmSize,
-			NetworkMode:  string(hostCfg.NetworkMode),
-			AutoRemove:   hostCfg.AutoRemove,
+			ResGPU:         "",
+			Mounts:         mountsSnapshot(hostCfg.Mounts),
+			ShmSizeBytes:   hostCfg.ShmSize,
+			NetworkMode:    string(hostCfg.NetworkMode),
+			AutoRemove:     hostCfg.AutoRemove,
 			DeviceRequests: deviceReqSnapshot(hostCfg.Resources.DeviceRequests),
 		},
 	}
@@ -205,6 +205,9 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 			if h == "" || p == "" {
 				continue
 			}
+			if spec.Compound != nil && (h == "/var/run/docker.sock" || p == "/var/run/docker.sock") {
+				return "", nil, nil, fmt.Errorf("docker: compound tasks cannot mount docker socket")
+			}
 			mnts = append(mnts, mount.Mount{
 				Type:     mount.TypeBind,
 				Source:   h,
@@ -247,13 +250,27 @@ func (c *Client) runCreateSpec(ctx context.Context, t *model.Task, skipPull bool
 		ShmSize:    spec.ShmSizeBytes,
 		AutoRemove: spec.AutoRemove,
 	}
+	if spec.Compound != nil {
+		// Run creates this task-owned internal bridge immediately before any
+		// sidecar/primary container.  PreviewStartParams exposes the exact
+		// projected mode without contacting the daemon.
+		hostCfg.NetworkMode = container.NetworkMode(compoundNetworkName(t.TaskID))
+	}
 	if nm := strings.TrimSpace(spec.NetworkMode); nm != "" {
+		if spec.Compound != nil {
+			return "", nil, nil, fmt.Errorf("docker: compound tasks cannot override scheduler-owned network_mode")
+		}
 		hostCfg.NetworkMode = container.NetworkMode(nm)
 	}
 	labels := map[string]string{
 		"mp_sched.task_id":  t.TaskID,
 		"mp_sched.provider": "docker",
 		"vendor":            "mova",
+	}
+	if spec.Compound != nil {
+		labels["mp_sched.compound"] = "true"
+		labels["mp_sched.compound_role"] = "primary"
+		labels["mp_sched.network"] = compoundNetworkName(t.TaskID)
 	}
 	cfg = &container.Config{
 		Image:      image,

@@ -31,9 +31,40 @@ type BusinessSpec struct {
 	ConfigMode          string `json:"config_mode"`
 	ConfigContainerPath string `json:"config_container_path"`
 
+	// Compound optionally asks the Docker provider to create a scheduler-owned
+	// private bridge network, launch the declared sidecars on that network, and
+	// attach the primary task container to it.  Sidecars deliberately have no
+	// mount/socket fields: they are image-only service helpers and cannot gain
+	// access to the host Docker socket or scheduler workspace by accident.
+	Compound *CompoundSpec `json:"compound,omitempty"`
+
 	// 以下为 type=env 时使用
 	EnvKey   string `json:"env_key"`
 	EnvValue string `json:"env_value"`
+}
+
+// CompoundSpec is the closed, scheduler-native sidecar contract.  The
+// network name is generated from the task id (the field is intentionally not
+// user supplied); aliases are the only way for the primary container to reach
+// a sidecar.  All containers remain on an internal bridge network.
+type CompoundSpec struct {
+	Sidecars []SidecarSpec `json:"sidecars"`
+}
+
+// SidecarSpec contains only immutable image/process identity.  Mounts,
+// network mode, ports and privileged flags are intentionally not representable.
+type SidecarSpec struct {
+	Name  string `json:"name"`
+	Image string `json:"image"`
+	// Loopback makes the primary share this sidecar's network namespace
+	// (container:<sidecar-id>), allowing fixed localhost APIs such as
+	// 127.0.0.1:9100 without host networking or published ports.
+	Loopback   bool     `json:"loopback,omitempty"`
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	Command    []string `json:"command,omitempty"`
+	Env        []string `json:"env,omitempty"`
+	Workdir    string   `json:"workdir,omitempty"`
+	User       string   `json:"user,omitempty"`
 }
 
 func parseBusiness(raw []byte) (BusinessSpec, error) {
@@ -44,7 +75,44 @@ func parseBusiness(raw []byte) (BusinessSpec, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return BusinessSpec{}, fmt.Errorf("docker: business json: %w", err)
 	}
+	if err := validateCompound(&s); err != nil {
+		return BusinessSpec{}, err
+	}
 	return s, nil
+}
+
+func validateCompound(spec *BusinessSpec) error {
+	if spec == nil || spec.Compound == nil {
+		return nil
+	}
+	if len(spec.Compound.Sidecars) == 0 {
+		return fmt.Errorf("docker: compound.sidecars must not be empty")
+	}
+	seen := make(map[string]struct{}, len(spec.Compound.Sidecars))
+	loopback := 0
+	for i, s := range spec.Compound.Sidecars {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			return fmt.Errorf("docker: compound.sidecars[%d].name is required", i)
+		}
+		if _, ok := seen[name]; ok {
+			return fmt.Errorf("docker: duplicate compound sidecar name %q", name)
+		}
+		seen[name] = struct{}{}
+		if strings.TrimSpace(s.Image) == "" {
+			return fmt.Errorf("docker: compound.sidecars[%d].image is required", i)
+		}
+		if s.Loopback {
+			loopback++
+		}
+	}
+	if loopback > 1 {
+		return fmt.Errorf("docker: compound allows at most one loopback sidecar")
+	}
+	if n := strings.ToLower(strings.TrimSpace(spec.NetworkMode)); n == "host" || strings.HasPrefix(n, "container:") {
+		return fmt.Errorf("docker: compound tasks cannot use network_mode=%q", spec.NetworkMode)
+	}
+	return nil
 }
 
 // BusinessPayloadType 归一化 type：config（含 file/空）或 env
